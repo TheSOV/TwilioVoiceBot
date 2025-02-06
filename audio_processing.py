@@ -13,7 +13,7 @@ def process_input_audio(ulaw_data, wav_filename=None, wav_file=None, file_dir='r
     audio_np = np.frombuffer(pcm_data, dtype=np.int16).copy()
     
     # Apply filter (using deepfilternet for better noise reduction)
-    filtered_audio = (audio_np / 10).astype(np.int16)
+    filtered_audio = (audio_np / 5).astype(np.int16)
     
     # Convert filtered audio back to bytes
     filtered_pcm = filtered_audio.tobytes()
@@ -87,7 +87,7 @@ def process_output_audio(ulaw_data, wav_filename=None, wav_file=None, file_dir='
             "event": "media",
             "streamSid": stream_sid,
             "media": {
-                "payload": ulaw_data  # Keep original ulaw payload for Twilio
+                "payload": base64.b64encode(ulaw_bytes).decode('utf-8')  # Encode payload as base64
             }
         }
 

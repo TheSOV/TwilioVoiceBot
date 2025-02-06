@@ -12,6 +12,8 @@ from dotenv import load_dotenv
 import uvicorn
 import re
 import os
+import yaml
+import copy
 
 from audio_processing import process_input_audio, process_output_audio
 from bot_initialization import initialize_session
@@ -32,10 +34,9 @@ if raw_domain is None:
 
 DOMAIN = re.sub(r'(^\w+:|^)\/\/|\/+$', '', raw_domain) # Strip protocols and trailing slashes from DOMAIN
 VOICE = os.getenv('OPENAI_AUDIO_VOICE', 'coral')
-OPENAI_MODEL = os.getenv('OPENAI_MODEL', 'gpt-4o-mini-realtime-preview')
+OPENAI_MODEL = os.getenv('OPENAI_MODEL', 'gpt-4o-mini-realtime-preview-2024-12-17')
 
 PORT = int(os.getenv('PORT', 6060))
-
 
 print(f"TWILIO_ACCOUNT_SID: {TWILIO_ACCOUNT_SID}")
 print(f"TWILIO_AUTH_TOKEN: {TWILIO_AUTH_TOKEN}")
@@ -53,38 +54,17 @@ LOG_EVENT_TYPES = [
 ]
 
 
-SYSTEM_MESSAGE = (
-    """# Prompt de Sistema - Asistente MyCityHome
+# loads the system message from the yaml file in the AI/prompts directory
+def load_system_message():
+    yaml_path = os.path.join(os.path.dirname(__file__), 'AI', 'prompts', 'system.yaml')
 
-Eres el asistente virtual de MyCityHome, una empresa especializada en alquiler de pisos. Tu objetivo es recopilar la información necesaria para encontrar la propiedad ideal para el cliente.
+    with open(yaml_path, 'r', encoding='utf-8') as file:
+        system_config = yaml.safe_load(file)
+        return system_config['system_prompt']['content']
 
-## Comportamiento Principal
-- Proporciona respuestas breves y directas, preferiblemente en una sola oración
-- Mantén un tono profesional pero amigable
-- Prioriza la claridad y precisión en la información
-- Siempre responde en el mismo idioma con el que el cliente se comunica
+SYSTEM_MESSAGE = load_system_message()
 
-## Funciones Clave
-1. Información a recolectar
-   - Zona en la que desea vivir
-   - Presupuesto
-   - Tamaño de la propiedad
-   - Tipo de vivienda (casa, departamento, etc.)
-   - Otras preferencias (características especiales, etc.)
-
-## Formato de Respuestas
-- Limita las respuestas a 1 oración corta cuando sea posible
-- Usa datos concretos: precio, metros cuadrados, ubicación
-- Incluye siempre próximos pasos o llamadas a la acción
-- Evita usar lenguaje descriptivo excesivo, o lenguaje demasiado sumiso, concéntrate en la información relevante
-
-## Restricciones
-- No negociar precios
-- No hacer promesas sobre disponibilidad
-- No compartir información personal de propietarios
-- No gestionar pagos o contratos directamente.
-- Do not answer to back ground noise, or lower voices. If you don't understand clearly what the client is saying due to noise, do not answer or request for clarification or moving to quieter place."""
-)
+# print("SYSTEM_MESSAGE: ", SYSTEM_MESSAGE)
 
 app = FastAPI()
 
@@ -95,6 +75,7 @@ if not (TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN and PHONE_NUMBER_FROM and OPENA
 client = Client(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
 # Shared state for calls
 call_results = {}
+call_sid = None
 
 @app.get('/', response_class=JSONResponse)
 async def index_page():
@@ -104,6 +85,7 @@ async def index_page():
 
 @app.post('/make_call')
 async def initiate_call(phone_number: str = Query(...)):
+    global call_sid
     """
     Endpoint to make a call to a single phone number and wait for result.
     
@@ -132,19 +114,19 @@ async def initiate_call(phone_number: str = Query(...)):
         
         # Log the call SID
         await log_call_sid(call.sid)
+        call_sid = call.sid
         
         # Initialize the result for this call
         
         # Wait for the result (with a timeout)
         for _ in range(600):  # 1 minute timeout
             await asyncio.sleep(1)
-            print(call_results)
+            # print(call_results)
             if call_results:
-                result = call_results.copy()
+                result = copy.deepcopy(call_results)
                 call_results.clear()
                 return JSONResponse(content={
                     "message": "Call completed",
-                    "call_sid": call.sid,
                     "phone_number": phone_number,
                     "result": result
                 })
@@ -163,6 +145,7 @@ async def initiate_call(phone_number: str = Query(...)):
 
 @app.websocket('/media-stream')
 async def handle_media_stream(websocket: WebSocket):
+    global call_sid
     """Handle WebSocket connections between Twilio and OpenAI."""
     print("Client connected")
     await websocket.accept()
@@ -177,7 +160,9 @@ async def handle_media_stream(websocket: WebSocket):
     input_wav_file = None
     output_wav_file = None
     wav_filename = None  # Initialize wav_filename
+    end_call = False
     global call_results
+    global call_sid
     
     async with websockets.connect(
         uri=uri,additional_headers=additionals_headers
@@ -187,7 +172,8 @@ async def handle_media_stream(websocket: WebSocket):
         
         async def receive_from_twilio():
             """Receive audio data from Twilio and send it to the OpenAI Realtime API."""
-            nonlocal stream_sid, input_wav_file, wav_filename, output_wav_file
+            nonlocal stream_sid, input_wav_file, wav_filename, output_wav_file, end_call
+            global call_sid
             
             try:
                 async for message in websocket.iter_text():
@@ -214,7 +200,21 @@ async def handle_media_stream(websocket: WebSocket):
                         audio_append, wav_filename, input_wav_file = process_input_audio(ulaw_data, wav_filename, input_wav_file)
                         
                         # Send the processed audio data to the OpenAI Realtime API
-                        await openai_ws.send(json.dumps(audio_append))
+                        sent = False
+                        count = 0
+                        while not sent and count < 3:
+                            try:
+                                count += 1
+                                await openai_ws.send(json.dumps(audio_append))
+                                sent = True
+                                break
+                            except Exception as e:
+                                await asyncio.sleep(0.2)
+                                print(f"Error sending audio data: {e}")
+                                
+                        if not sent:
+                            print("Failed to send audio data after 3 attempts")
+                            raise Exception("Failed to send audio data after 3 attempts")
                     
                     # Handle the 'start' event, this occurs when the Twilio client starts the stream
                     elif data['event'] == 'start':
@@ -225,15 +225,23 @@ async def handle_media_stream(websocket: WebSocket):
             except WebSocketDisconnect:
                 print("Client disconnected.")
                 call_results.update({
-                    "status": "disconnected",
+                    "status": "operai_disconnected",
                     "stream_sid": stream_sid
                 })
-                return
+
+            except Exception as e:
+                print(f"Error in receive_from_twilio: {e}")
+                call_results.update({
+                    "status": "openai_disconnected",
+                    "stream_sid": stream_sid
+                })
 
             finally:
                 # Close the WebSocket connection to OpenAI
                 try:
                     await openai_ws.close()
+                    client.calls(call_sid).update(status="completed")
+
                 except Exception as e:
                     print(f"Error closing OpenAI WebSocket: {e}")
 
@@ -246,6 +254,7 @@ async def handle_media_stream(websocket: WebSocket):
         async def send_to_twilio():
             """Receive events from the OpenAI Realtime API, send audio back to Twilio."""
             nonlocal stream_sid, output_wav_file, wav_filename
+            global call_sid
             try:
                 #similar to the receive_from_twilio function, this function will receive the events from the OpenAI Realtime API
                 # and send the audio back to Twilio
@@ -278,6 +287,83 @@ async def handle_media_stream(websocket: WebSocket):
                         except Exception as e:
                             print(f"Error processing audio data: {e}")                        
 
+                    if response['type'] == 'response.done':
+                        # print()
+                        # print("Response Output")
+                        response_output = response["response"].get('output', None)
+                        # print("response_output ", response_output)
+                        # print()
+
+                        if response_output:
+                                       
+                            for ro in response_output:
+                                is_tool_call = ro.get('type', '') == 'function_call'
+
+                                # print()
+                                # print("is_tool_call ", is_tool_call)
+                                if is_tool_call:
+                                    # Handle the function call
+                                    tool_name = ro['name']
+                                    tool_args = ro['arguments']
+                                    tool_call_id = ro['call_id']
+
+                                    print()
+                                    print("tool_name ", tool_name)
+                                    print("tool_args ", tool_args)
+                                    print("tool_call_id ", tool_call_id)
+
+                                    if tool_name == 'save_information':
+                                        # call_results["information"] = tool_args
+                                        call_results.update({
+                                            "information": tool_args
+                                        })
+                                        # print("call_results ", call_results)
+
+                                        tool_response = {
+                                            "type": "conversation.item.create",
+                                            "item": {
+                                                "type": "function_call_output",
+                                                "call_id": tool_call_id,
+                                                "output": json.dumps({
+                                                    "response": "Indica al cliente que más tarde será contactado vía WhatsApp, desea buenas tardes y pide permiso para terminar la llamada. Si el cliente confirma, use la herramienta 'end_call'."
+                                                })
+                                            }
+                                        }
+                                        
+                                        await openai_ws.send(json.dumps(tool_response))
+                                        
+
+                                        tool_response = {
+                                            "type": "response.create"
+                                            }
+                                        await openai_ws.send(json.dumps(tool_response))
+
+                                        if tool_name == 'end_call':
+                                            try:
+                                                # Ensure call_sid is not None before attempting to end the call
+                                                if call_sid:
+                                                    client.calls(call_sid).update(status="completed")
+                                                    print(f"\n--- Call {call_sid} Ended by Assistant ---")
+                                                else:
+                                                    print("No active call to end.")
+                                                
+                                                # Reset call_sid to None
+                                                call_sid = None
+                                                
+                                                # Print final call results
+                                                print("Final Call Results:")
+                                                print(json.dumps(call_results, indent=2))
+                                                print("----------------------------\n")
+                                                
+                                                # Optional: Break out of the processing loop
+                                                break
+                                            except Exception as end_call_error:
+                                                print(f"Error ending call: {end_call_error}")
+                                                # Even if there's an error, reset call_sid
+                                                call_sid = None
+                                        
+                                        
+
             except Exception as e:
                 print(f"Error in send_to_twilio: {e}")
                 call_results.update({
@@ -286,8 +372,50 @@ async def handle_media_stream(websocket: WebSocket):
                     "stream_sid": stream_sid
                 })
 
-        # Run the asyncio event loop, to continuously communicate with Twilio and OpenAI
-        await asyncio.gather(receive_from_twilio(), send_to_twilio())
+        try:
+            # Run the asyncio event loop, to continuously communicate with Twilio and OpenAI
+            await asyncio.gather(receive_from_twilio(), send_to_twilio())
+
+        except Exception as global_error:
+            print(f"Unexpected global error in handle_media_stream: {global_error}")
+            
+            # Attempt to end the call if possible
+            try:
+                if call_sid:
+                    client.calls(call_sid).update(status="completed")
+                    print(f"\n--- Call {call_sid} Force Ended Due to Error ---")
+            except Exception as end_call_error:
+                print(f"Error force-ending call: {end_call_error}")
+            
+            # Update call results with the global error
+            call_results.update({
+                "status": "error",
+                "error_message": str(global_error),
+                "stream_sid": stream_sid
+            })
+            
+            # Re-raise the error if needed for further handling
+            raise
+
+        finally:
+            # Ensure call is ended and resources are cleaned up
+            try:
+                if call_sid:
+                    client.calls(call_sid).update(status="completed")
+            except Exception as final_end_call_error:
+                print(f"Final error ending call: {final_end_call_error}")
+
+            # Ensure all files are closed
+            if input_wav_file:
+                input_wav_file.close()
+            if output_wav_file:
+                output_wav_file.close()
+
+            # Ensure WebSocket connections are closed
+            try:
+                await websocket.close()
+            except Exception as ws_close_error:
+                print(f"Error closing WebSocket: {ws_close_error}")
 
         # Ensure call results are set if not already set
         if not call_results:

@@ -1,0 +1,31 @@
+---
+save_information_tool:
+  type: function
+  name: save_information
+  description: salva la información recopilada del cliente sobre sus preferencias.
+  parameters:
+    type: object
+    properties:
+      place:
+        type: string
+        description: Lugar, o lugares, en los que el cliente desea vivir.
+      budget:
+        type: number
+        description: Presupuesto que el cliente desea.
+      others:
+        type: string
+        description: Otras preferencias o características especiales que el cliente desea.
+      human_assistance:
+        type: boolean
+        description: Indica si el cliente solicitó asistencia humana en alguna parte de la interacción.
+      observations:
+        type: string
+        description: Observaciones adicionales sobre la interacción, con el cliente, tales como posibles problemas o dificultades durante la interacción, posible satisfacción del cliente, posibles sugerencias al momento de interactuar con el cliente nuevamente, sugerencias de mejora para la interacción del asistente con los clientes.
+
+end_call_tool:
+  type: function
+  name: end_call
+  description: termina la llamada.
+  parameters:
+    type: object
+    properties: {}
