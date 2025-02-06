@@ -34,7 +34,7 @@ if raw_domain is None:
 
 DOMAIN = re.sub(r'(^\w+:|^)\/\/|\/+$', '', raw_domain) # Strip protocols and trailing slashes from DOMAIN
 VOICE = os.getenv('OPENAI_AUDIO_VOICE', 'coral')
-OPENAI_MODEL = os.getenv('OPENAI_MODEL', 'gpt-4o-mini-realtime-preview-2024-12-17')
+OPENAI_REALTIME_MODEL = os.getenv('OPENAI_REALTIME_MODEL', 'gpt-4o-mini-realtime-preview-2024-12-17')
 
 PORT = int(os.getenv('PORT', 6060))
 
@@ -44,7 +44,7 @@ print(f"PHONE_NUMBER_FROM: {PHONE_NUMBER_FROM}")
 print(f"OPENAI_API_KEY: {OPENAI_API_KEY}")
 print(f"DOMAIN: {DOMAIN}")
 print(f"VOICE: {VOICE}")
-print(f"OPENAI_MODEL: {OPENAI_MODEL}")
+print(f"OPENAI_MODEL: {OPENAI_REALTIME_MODEL}")
 print(f"PORT: {PORT}")
 
 LOG_EVENT_TYPES = [
@@ -56,7 +56,7 @@ LOG_EVENT_TYPES = [
 
 # loads the system message from the yaml file in the AI/prompts directory
 def load_system_message():
-    yaml_path = os.path.join(os.path.dirname(__file__), 'AI', 'prompts', 'system.yaml')
+    yaml_path = os.path.join(os.path.dirname(__file__), 'AI', 'prompts', 'voice_bot_prompts.yaml')
 
     with open(yaml_path, 'r', encoding='utf-8') as file:
         system_config = yaml.safe_load(file)
@@ -150,7 +150,7 @@ async def handle_media_stream(websocket: WebSocket):
     print("Client connected")
     await websocket.accept()
 
-    uri =f"wss://api.openai.com/v1/realtime?model={OPENAI_MODEL}"
+    uri =f"wss://api.openai.com/v1/realtime?model={OPENAI_REALTIME_MODEL}"
     additionals_headers={
             "Authorization": f"Bearer {OPENAI_API_KEY}",
             "OpenAI-Beta": "realtime=v1"

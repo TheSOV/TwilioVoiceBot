@@ -52,7 +52,7 @@ async def initialize_session(openai_ws, voice, system_message):
 
 def load_initial_conversation_script():
     """Load initial conversation script from YAML file."""
-    yaml_path = os.path.join(os.path.dirname(__file__), 'AI', 'prompts', 'script.yaml')
+    yaml_path = os.path.join(os.path.dirname(__file__), 'AI', 'prompts', 'info_extraction_prompts.yaml')
     
     with open(yaml_path, 'r', encoding='utf-8') as file:
         script_config = yaml.safe_load(file)
