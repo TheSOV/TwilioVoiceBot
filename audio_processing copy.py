@@ -4,6 +4,7 @@ import numpy as np
 import wave
 import os
 from datetime import datetime
+import struct
 import time
 
 class AudioRecorder:
@@ -20,16 +21,13 @@ class AudioRecorder:
         self.frame_rate = frame_rate
         self.frame_duration = 1 / frame_rate  # Duration of a single frame at 8kHz
 
-    def create_wav_file(self, phone_number=None):
+    def create_wav_file(self):
         if self.wav_file is not None:
             self.wav_file.close()
 
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         os.makedirs(self.file_dir, exist_ok=True)
-        if phone_number is not None:
-            self.wav_filename = f'{self.file_dir}/combined_audio_{phone_number}.wav'
-        else:
-            self.wav_filename = f'{self.file_dir}/combined_audio_{timestamp}.wav'
+        self.wav_filename = f'{self.file_dir}/combined_audio_{timestamp}.wav'
         self.wav_file = wave.open(self.wav_filename, 'wb')
         self.wav_file.setnchannels(2)  # Stereo
         self.wav_file.setsampwidth(2)  # 16-bit audio
@@ -37,9 +35,9 @@ class AudioRecorder:
         self.start_time = time.time()
         print(f"Created new stereo audio file: {self.wav_filename}")
 
-    def write_input_audio(self, input_bytes, phone_number=None):
+    def write_input_audio(self, input_bytes):
         if self.wav_file is None:
-            self.create_wav_file(phone_number)
+            self.create_wav_file()
         
         # Store input frames
         self.input_frames.append(input_bytes)
@@ -47,9 +45,9 @@ class AudioRecorder:
         # Synchronize channels if needed
         self._synchronize_channels()
 
-    def write_output_audio(self, output_bytes, phone_number=None):
+    def write_output_audio(self, output_bytes):
         if self.wav_file is None:
-            self.create_wav_file(phone_number)
+            self.create_wav_file()
         
         # Store output frames
         self.output_frames.append(output_bytes)
@@ -99,7 +97,7 @@ class AudioRecorder:
 # Global audio recorder instance
 audio_recorder = AudioRecorder()
 
-def process_input_audio(ulaw_data, wav_filename=None, wav_file=None, file_dir='recordings/input', phone_number=None):
+def process_input_audio(ulaw_data, wav_filename=None, wav_file=None, file_dir='recordings/input'):
     # Convert ulaw to PCM16
     pcm_data = audioop.ulaw2lin(ulaw_data, 2)  # 2 bytes per sample
     
@@ -107,13 +105,13 @@ def process_input_audio(ulaw_data, wav_filename=None, wav_file=None, file_dir='r
     audio_np = np.frombuffer(pcm_data, dtype=np.int16).copy()
     
     # Apply filter (using deepfilternet for better noise reduction)
-    filtered_audio = (audio_np / 8).astype(np.int16)
+    filtered_audio = (audio_np / 5).astype(np.int16)
     
     # Convert filtered audio back to bytes
     filtered_pcm = filtered_audio.tobytes()
     
     # Write to combined audio file (left channel)
-    audio_recorder.write_input_audio(filtered_pcm, phone_number)
+    audio_recorder.write_input_audio(filtered_pcm)
     
     # Convert filtered PCM back to ulaw
     filtered_ulaw = audioop.lin2ulaw(filtered_pcm, 2)  # 2 bytes per sample
@@ -126,7 +124,7 @@ def process_input_audio(ulaw_data, wav_filename=None, wav_file=None, file_dir='r
 
     return audio_append, audio_recorder.wav_filename, audio_recorder.wav_file
 
-def process_output_audio(ulaw_data, wav_filename=None, wav_file=None, file_dir='recordings/output', stream_sid=None, phone_number=None):
+def process_output_audio(ulaw_data, wav_filename=None, wav_file=None, file_dir='recordings/output', stream_sid=None):
     """
     Process output audio from OpenAI, converting ulaw to WAV.
 
@@ -148,7 +146,7 @@ def process_output_audio(ulaw_data, wav_filename=None, wav_file=None, file_dir='
         pcm_data = audioop.ulaw2lin(ulaw_bytes, 2)  # 2 bytes per sample
         
         # Write to combined audio file (right channel)
-        audio_recorder.write_output_audio(pcm_data, phone_number)
+        audio_recorder.write_output_audio(pcm_data)
         
         # Prepare audio delta for Twilio
         audio_delta = {

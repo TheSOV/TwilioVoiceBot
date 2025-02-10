@@ -2,8 +2,7 @@ import os
 import json
 import base64
 import asyncio
-import argparse
-from fastapi import FastAPI, WebSocket, BackgroundTasks, Query
+from fastapi import FastAPI, WebSocket, Query
 from fastapi.responses import JSONResponse
 from fastapi.websockets import WebSocketDisconnect
 from twilio.rest import Client
@@ -14,38 +13,47 @@ import re
 import os
 import yaml
 import copy
+import ngrok
+import traceback
 
 from audio_processing import process_input_audio, process_output_audio
 from bot_initialization import initialize_session
 
-
 load_dotenv(override=True)
 
-# Configuration
+# Load environment variables from .env file
 TWILIO_ACCOUNT_SID = os.getenv('TWILIO_ACCOUNT_SID')
 TWILIO_AUTH_TOKEN = os.getenv('TWILIO_AUTH_TOKEN')
 PHONE_NUMBER_FROM = os.getenv('PHONE_NUMBER_FROM')
 OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
-raw_domain = os.getenv('GROK_DOMAIN', None)
-
-if raw_domain is None:
-    print("Error: GROK_DOMAIN is not set.")
-    exit(1)
-
-DOMAIN = re.sub(r'(^\w+:|^)\/\/|\/+$', '', raw_domain) # Strip protocols and trailing slashes from DOMAIN
 VOICE = os.getenv('OPENAI_AUDIO_VOICE', 'coral')
 OPENAI_REALTIME_MODEL = os.getenv('OPENAI_REALTIME_MODEL', 'gpt-4o-mini-realtime-preview-2024-12-17')
-
+NGROK_TOKEN = os.getenv('NGROK_TOKEN', None)
 PORT = int(os.getenv('PORT', 6060))
 
-print(f"TWILIO_ACCOUNT_SID: {TWILIO_ACCOUNT_SID}")
-print(f"TWILIO_AUTH_TOKEN: {TWILIO_AUTH_TOKEN}")
+# initialize ngrok listener
+listener = ngrok.forward(PORT, authtoken=NGROK_TOKEN)
+raw_domain = listener.url()
+
+if raw_domain is None:
+    input("Error: NGROK_DOMAIN is not set. Press any key to exit...")    
+    exit(1)
+else:
+    print("NGROK_DOMAIN: ", raw_domain)
+
+DOMAIN = re.sub(r'(^\w+:|^)\/\/|\/+$', '', raw_domain) # Strip protocols and trailing slashes from DOMAIN
+
+print("System data loaded from .env file:")
+print(f"TWILIO_ACCOUNT_SID: {TWILIO_ACCOUNT_SID[:6]}{(len(TWILIO_ACCOUNT_SID) - 6) * '*'}")
+print(f"TWILIO_AUTH_TOKEN: {TWILIO_AUTH_TOKEN[:6]}{(len(TWILIO_AUTH_TOKEN) - 6) * '*'}")
 print(f"PHONE_NUMBER_FROM: {PHONE_NUMBER_FROM}")
-print(f"OPENAI_API_KEY: {OPENAI_API_KEY}")
-print(f"DOMAIN: {DOMAIN}")
+print(f"OPENAI_API_KEY: {OPENAI_API_KEY[:6]}{(len(OPENAI_API_KEY) - 6) * '*'}")
 print(f"VOICE: {VOICE}")
 print(f"OPENAI_MODEL: {OPENAI_REALTIME_MODEL}")
+print(f"NGROK_TOKEN: {NGROK_TOKEN[:6]}{(len(NGROK_TOKEN) - 6) * '*'}")
+print(f"DOMAIN: {DOMAIN}")
 print(f"PORT: {PORT}")
+print()
 
 LOG_EVENT_TYPES = [
     'error', 'response.content.done', 'rate_limits.updated', 'response.done',
@@ -74,32 +82,23 @@ if not (TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN and PHONE_NUMBER_FROM and OPENA
 # Initialize Twilio client
 client = Client(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
 # Shared state for calls
-call_results = {}
-call_sid = None
+
+calls = []
 
 @app.get('/', response_class=JSONResponse)
 async def index_page():
     return {"message": "Twilio Media Stream Server is running!"}
 
-
-
 @app.post('/make_call')
 async def initiate_call(phone_number: str = Query(...)):
-    global call_sid
+    global calls
     """
     Endpoint to make a call to a single phone number and wait for result.
     
     :param phone_number: Phone number to call (as a query parameter)
     :return: JSON response with call details
     """
-    try:
-        # Validate the phone number
-        is_allowed = await check_number_allowed(phone_number)
-        if not is_allowed:
-            return JSONResponse(content={
-                "error": f"The number {phone_number} is not recognized as a valid outgoing number or caller ID."
-            }, status_code=400)
-        
+    try:        
         # Make the call
         outbound_twiml = (
             f'<?xml version="1.0" encoding="UTF-8"?>'
@@ -111,41 +110,49 @@ async def initiate_call(phone_number: str = Query(...)):
             to=phone_number,
             twiml=outbound_twiml
         )
-        
-        # Log the call SID
-        await log_call_sid(call.sid)
-        call_sid = call.sid
+
+        my_call = {
+            "call_sid": call.sid,
+            "phone_number": phone_number,
+            "call_status": "in_progress"
+        }
+        calls.append(my_call)
         
         # Initialize the result for this call
         
         # Wait for the result (with a timeout)
         for _ in range(600):  # 1 minute timeout
             await asyncio.sleep(1)
-            # print(call_results)
-            if call_results:
-                result = copy.deepcopy(call_results)
-                call_results.clear()
-                return JSONResponse(content={
-                    "message": "Call completed",
-                    "phone_number": phone_number,
-                    "result": result
-                })
+            current_call = None
+            for _call in calls:
+                if _call['call_sid'] == call.sid:
+                    current_call = _call
+
+            if current_call:
+                if current_call['call_status'] == 'completed' or current_call['call_status'] == 'failed' or current_call['call_status'] == 'busy' or current_call['call_status'] == 'canceled':
+                    result = copy.deepcopy(current_call)
+                    calls.remove(current_call)
+                    return JSONResponse(content=result)
+            
+            else:
+                break
         
         # Timeout occurred
 
         return JSONResponse(content={
             "error": "Call result timeout",
-            "call_sid": call.sid
+            "call_sid": call.sid,
         }, status_code=408)
     
     except Exception as e:
+        traceback.print_exc()
         return JSONResponse(content={
             "error": str(e)
         }, status_code=500)
 
 @app.websocket('/media-stream')
 async def handle_media_stream(websocket: WebSocket):
-    global call_sid
+    global calls
     """Handle WebSocket connections between Twilio and OpenAI."""
     print("Client connected")
     await websocket.accept()
@@ -161,8 +168,8 @@ async def handle_media_stream(websocket: WebSocket):
     output_wav_file = None
     wav_filename = None  # Initialize wav_filename
     end_call = False
-    global call_results
-    global call_sid
+    current_call = None
+    global calls
     
     async with websockets.connect(
         uri=uri,additional_headers=additionals_headers
@@ -172,8 +179,8 @@ async def handle_media_stream(websocket: WebSocket):
         
         async def receive_from_twilio():
             """Receive audio data from Twilio and send it to the OpenAI Realtime API."""
-            nonlocal stream_sid, input_wav_file, wav_filename, output_wav_file, end_call
-            global call_sid
+            nonlocal stream_sid, input_wav_file, wav_filename, output_wav_file, end_call, current_call
+            # global call_sid
             
             try:
                 async for message in websocket.iter_text():
@@ -183,21 +190,20 @@ async def handle_media_stream(websocket: WebSocket):
                     # Detect call end event
                     if data['event'] == 'stop':
                         print("Call stopped by Twilio")
-                        call_results.update({
-                            "status": "completed",
-                            "stream_sid": stream_sid
-                        })
+                        current_call['call_status'] = "completed"
+
                         return  # Exit the coroutine
 
                     #verify if the message is a media event, which means, that the message is an audio stream
                     if data['event'] == 'media':
+
                         # Decode base64 ulaw data, the code by default uses g711_ulaw encoding for voice audio
                         ulaw_data = base64.b64decode(data['media']['payload'])
                         
                         # Process the audio data, in process_input_audio function you can add new filter features 
                         # if required, also handle the wav file creation to record the input audio, for later processing
                         # and use.
-                        audio_append, wav_filename, input_wav_file = process_input_audio(ulaw_data, wav_filename, input_wav_file)
+                        audio_append, wav_filename, input_wav_file = process_input_audio(ulaw_data, wav_filename, input_wav_file, phone_number=current_call['phone_number'])
                         
                         # Send the processed audio data to the OpenAI Realtime API
                         sent = False
@@ -209,6 +215,7 @@ async def handle_media_stream(websocket: WebSocket):
                                 sent = True
                                 break
                             except Exception as e:
+                                traceback.print_exc()
                                 await asyncio.sleep(0.2)
                                 print(f"Error sending audio data: {e}")
                                 
@@ -219,31 +226,38 @@ async def handle_media_stream(websocket: WebSocket):
                     # Handle the 'start' event, this occurs when the Twilio client starts the stream
                     elif data['event'] == 'start':
                         stream_sid = data['start']['streamSid']
-                        print(f"Incoming stream has started {stream_sid}")
+                        call_sid = data['start']['callSid']
+
+                        for _call in calls:
+                            if _call['call_sid'] == call_sid:
+                                current_call = _call
+
+                        if current_call:
+                            current_call['stream_sid'] = stream_sid
+                        else:
+                            raise Exception("Call not found")
             
             # Handle disconnections, directly by handling the WebSocketDisconnect exception
             except WebSocketDisconnect:
+                traceback.print_exc()
                 print("Client disconnected.")
-                call_results.update({
-                    "status": "operai_disconnected",
-                    "stream_sid": stream_sid
-                })
+                current_call['call_status'] = "disconnected"
 
             except Exception as e:
+                traceback.print_exc()
                 print(f"Error in receive_from_twilio: {e}")
-                call_results.update({
-                    "status": "openai_disconnected",
-                    "stream_sid": stream_sid
-                })
+                current_call['call_status'] = "disconnected"
 
             finally:
                 # Close the WebSocket connection to OpenAI
                 try:
-                    await openai_ws.close()
-                    client.calls(call_sid).update(status="completed")
+                    await openai_ws.close()                
 
                 except Exception as e:
+                    traceback.print_exc()
                     print(f"Error closing OpenAI WebSocket: {e}")
+
+                # client.calls(call_sid).update(status="completed")
 
                 # Close the WAV file to properly terminate recording
                 if input_wav_file:
@@ -253,8 +267,7 @@ async def handle_media_stream(websocket: WebSocket):
 
         async def send_to_twilio():
             """Receive events from the OpenAI Realtime API, send audio back to Twilio."""
-            nonlocal stream_sid, output_wav_file, wav_filename
-            global call_sid
+            nonlocal stream_sid, output_wav_file, wav_filename, current_call
             try:
                 #similar to the receive_from_twilio function, this function will receive the events from the OpenAI Realtime API
                 # and send the audio back to Twilio
@@ -277,7 +290,8 @@ async def handle_media_stream(websocket: WebSocket):
                                 response['delta'], 
                                 wav_filename, 
                                 output_wav_file, 
-                                stream_sid=stream_sid
+                                stream_sid=stream_sid,
+                                phone_number=current_call['phone_number']
                             )
                             
                             # Send the audio delta back to Twilio
@@ -285,6 +299,7 @@ async def handle_media_stream(websocket: WebSocket):
                                 await websocket.send_json(audio_delta)
 
                         except Exception as e:
+                            traceback.print_exc()
                             print(f"Error processing audio data: {e}")                        
 
                     if response['type'] == 'response.done':
@@ -312,87 +327,41 @@ async def handle_media_stream(websocket: WebSocket):
                                     print("tool_args ", tool_args)
                                     print("tool_call_id ", tool_call_id)
 
-                                    if tool_name == 'save_information':
-                                        # call_results["information"] = tool_args
-                                        call_results.update({
-                                            "information": tool_args
-                                        })
-                                        # print("call_results ", call_results)
-
-                                        tool_response = {
-                                            "type": "conversation.item.create",
-                                            "item": {
-                                                "type": "function_call_output",
-                                                "call_id": tool_call_id,
-                                                "output": json.dumps({
-                                                    "response": "Indica al cliente que más tarde será contactado vía WhatsApp, desea buenas tardes y pide permiso para terminar la llamada. Si el cliente confirma, use la herramienta 'end_call'."
-                                                })
-                                            }
-                                        }
-                                        
-                                        await openai_ws.send(json.dumps(tool_response))
-                                        
-
-                                        tool_response = {
-                                            "type": "response.create"
-                                            }
-                                        await openai_ws.send(json.dumps(tool_response))
-
-                                        if tool_name == 'end_call':
-                                            try:
-                                                # Ensure call_sid is not None before attempting to end the call
-                                                if call_sid:
-                                                    client.calls(call_sid).update(status="completed")
-                                                    print(f"\n--- Call {call_sid} Ended by Assistant ---")
-                                                else:
-                                                    print("No active call to end.")
-                                                
-                                                # Reset call_sid to None
-                                                call_sid = None
-                                                
-                                                # Print final call results
-                                                print("Final Call Results:")
-                                                print(json.dumps(call_results, indent=2))
-                                                print("----------------------------\n")
-                                                
-                                                # Optional: Break out of the processing loop
-                                                break
-                                            except Exception as end_call_error:
-                                                print(f"Error ending call: {end_call_error}")
-                                                # Even if there's an error, reset call_sid
-                                                call_sid = None
-                                        
-                                        
+                                    if tool_name == 'end_call':
+                                        try:
+                                            asyncio.sleep(5)
+                                            client.calls(current_call['call_sid']).update(status="completed")
+                                            current_call['call_status'] = "completed"
+                                            asyncio.sleep(5)
+                                            break
+                                        except Exception as end_call_error:
+                                            traceback.print_exc()
+                                            print(f"Error ending call: {end_call_error}")
 
             except Exception as e:
+                traceback.print_exc()
                 print(f"Error in send_to_twilio: {e}")
-                call_results.update({
-                    "status": "error",
-                    "error_message": str(e),
-                    "stream_sid": stream_sid
-                })
+                current_call['call_status'] = "disconnected"
+
 
         try:
             # Run the asyncio event loop, to continuously communicate with Twilio and OpenAI
             await asyncio.gather(receive_from_twilio(), send_to_twilio())
 
         except Exception as global_error:
+            traceback.print_exc()
             print(f"Unexpected global error in handle_media_stream: {global_error}")
             
             # Attempt to end the call if possible
             try:
-                if call_sid:
-                    client.calls(call_sid).update(status="completed")
-                    print(f"\n--- Call {call_sid} Force Ended Due to Error ---")
+                # if call_sid:
+                #     client.calls(call_sid).update(status="completed")
+                pass
             except Exception as end_call_error:
+                traceback.print_exc()
                 print(f"Error force-ending call: {end_call_error}")
             
-            # Update call results with the global error
-            call_results.update({
-                "status": "error",
-                "error_message": str(global_error),
-                "stream_sid": stream_sid
-            })
+            current_call['call_status'] = "disconnected"
             
             # Re-raise the error if needed for further handling
             raise
@@ -400,9 +369,11 @@ async def handle_media_stream(websocket: WebSocket):
         finally:
             # Ensure call is ended and resources are cleaned up
             try:
-                if call_sid:
-                    client.calls(call_sid).update(status="completed")
+                # if call_sid:
+                #     client.calls(call_sid).update(status="completed")
+                pass
             except Exception as final_end_call_error:
+                traceback.print_exc()
                 print(f"Final error ending call: {final_end_call_error}")
 
             # Ensure all files are closed
@@ -415,16 +386,11 @@ async def handle_media_stream(websocket: WebSocket):
             try:
                 await websocket.close()
             except Exception as ws_close_error:
+                traceback.print_exc()
                 print(f"Error closing WebSocket: {ws_close_error}")
 
-        # Ensure call results are set if not already set
-        if not call_results:
-            call_results.update({
-                "status": "unknown",
-                "stream_sid": stream_sid
-            })
-        
-        print("Call results updated:", call_results)
+        current_call['call_status'] = "disconnected"
+
 
 async def check_number_allowed(to):
     """Check if a number is allowed to be called."""
@@ -444,6 +410,7 @@ async def check_number_allowed(to):
 
         return False
     except Exception as e:
+        traceback.print_exc()
         print(f"Error checking phone number: {e}")
         return False
 
@@ -480,24 +447,10 @@ async def log_call_sid(call_sid):
 
 
 if __name__ == "__main__":
-    # parser = argparse.ArgumentParser(description="Run the Twilio AI voice assistant server.")
-    # parser.add_argument('--call', required=True, help="The phone number to call, e.g., '--call=+18005551212'")
-    # args = parser.parse_args()
-
-    # phone_number = args.call
-    # print(
-    #     'Our recommendation is to always disclose the use of AI for outbound or inbound calls.\n'
-    #     'Reminder: All of the rules of TCPA apply even if a call is made by AI.\n'
-    #     'Check with your counsel for legal and compliance advice.'
-    # )
-
-    # loop = asyncio.get_event_loop()
-    # loop.run_until_complete(make_call(phone_number))
-    
     uvicorn.run(app, host="0.0.0.0", port=PORT)
 
 
     #ngrok http 6060
     #python _base_twilio_vad.py --call=+34616642830
     #powershell Invoke-RestMethod -Method Post -Uri "http://localhost:6060/make_call?phone_number=+1234567890"
-    #cmd curl -X "POST" "http://localhost:6060/make_call?phone_number=+34616642830"
+    #cmd curl -X "POST" "http://localhost:6060/make_call?phone_number=%2B34616642830"

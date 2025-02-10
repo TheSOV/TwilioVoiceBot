@@ -5,7 +5,7 @@ from pydantic import BaseModel
 import yaml
 
 # Load environment variables from .env file
-load_dotenv()
+load_dotenv(override=True)
 
 # Load OpenAI models and credentials
 OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
@@ -32,7 +32,9 @@ class InfoExtractionAgent:
         audio_file = open(filedir, "rb")
         transcription = self.client.audio.transcriptions.create(
             model=OPENAI_STT_MODEL, 
-            file=audio_file
+            file=audio_file,
+            language="es",
+            prompt="MiCityHome",
         )
         print(f"Transcription: {transcription.text}")
         return transcription.text
@@ -49,7 +51,7 @@ class InfoExtractionAgent:
             ],
             response_format=ClientInfoExtraction,
         )
-        return response.choices[0].message.parsed
+        return response.choices[0].message
 
     def extract_info(self, audio_file):
         text = self._transcribe_audio(audio_file)
@@ -58,6 +60,6 @@ class InfoExtractionAgent:
 
 if __name__ == '__main__':
     agent = InfoExtractionAgent()
-    filedir = 'D:\\MyCityHomeCustom\\VoiceBot\\TwilioVoiceBot\\recordings\\input\\audio_20250205_075728.wav'
+    filedir = 'recordings/combined/combined_audio_20250206_073547.wav'
     response = agent.extract_info(filedir)
     print(response)
