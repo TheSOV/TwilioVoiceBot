@@ -1,5 +1,6 @@
 import requests
 import json
+import time
 import pandas
 import os
 import dotenv
@@ -105,12 +106,14 @@ if __name__ == "__main__":
         recording_destination = os.path.join(save_path, f"combined_audio_{number}.wav")
         shutil.copy2(recording_source, recording_destination)
 
-        information = info_agent.extract_info(recording_destination)
+        print(f"{Fore.CYAN}Transcribiendo y recopilando información...{Style.RESET_ALL}")
+        information, conversation = info_agent.extract_info(recording_destination)
 
+        print(f"{Fore.GREEN}Información extraida:{Style.RESET_ALL}")
         data = {}
 
         print("Information:")
-        for key, value in information.model_dump().items():
+        for key, value in information.model_dump()["parsed"].items():
             data[key] = value
             print(f"{key}: {value}")
 
@@ -118,8 +121,14 @@ if __name__ == "__main__":
         for key, value in response.json().items():
             data[key] = value
             print(f"{key}: {value}")
+        
+        print("\nConversation:")
+        for turn in conversation:
+            print(f"{turn['speaker']}: {turn['text']}")
+        
+        data["conversation"] = "\n".join([f"{turn['speaker']}: {turn['text']}" for turn in conversation])
      
         results.append(data)
 
         df = pandas.DataFrame(results)
-        df.to_excel(os.path.join(call_results_folder, "call_results.xlsx"), index=False)
+        df.to_excel(os.path.join("call_results", f"call_results_{time.strftime('%Y-%m-%d_%H-%M-%S')}.xlsx"), index=False)

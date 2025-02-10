@@ -180,7 +180,6 @@ async def handle_media_stream(websocket: WebSocket):
         async def receive_from_twilio():
             """Receive audio data from Twilio and send it to the OpenAI Realtime API."""
             nonlocal stream_sid, input_wav_file, wav_filename, output_wav_file, end_call, current_call
-            # global call_sid
             
             try:
                 async for message in websocket.iter_text():
@@ -264,6 +263,10 @@ async def handle_media_stream(websocket: WebSocket):
                     input_wav_file.close()
                 if output_wav_file:
                     output_wav_file.close()
+
+                wav_filename = None
+                output_wav_file = None
+                input_wav_file = None
 
         async def send_to_twilio():
             """Receive events from the OpenAI Realtime API, send audio back to Twilio."""
@@ -381,6 +384,10 @@ async def handle_media_stream(websocket: WebSocket):
                 input_wav_file.close()
             if output_wav_file:
                 output_wav_file.close()
+
+            wav_filename = None
+            output_wav_file = None
+            input_wav_file = None
 
             # Ensure WebSocket connections are closed
             try:

@@ -107,7 +107,7 @@ def process_input_audio(ulaw_data, wav_filename=None, wav_file=None, file_dir='r
     audio_np = np.frombuffer(pcm_data, dtype=np.int16).copy()
     
     # Apply filter (using deepfilternet for better noise reduction)
-    filtered_audio = (audio_np / 8).astype(np.int16)
+    filtered_audio = (audio_np / 7).astype(np.int16)
     
     # Convert filtered audio back to bytes
     filtered_pcm = filtered_audio.tobytes()
