@@ -2,7 +2,7 @@
 end_call_tool:
   type: function
   name: end_call
-  description: termina la llamada.
+  description: termina la llamada después de haber finalizado la conversación. Generalmente se usa para terminar la llamada cuando se ha alcanzado recopilado toda la información, o cuando el cliente ha decidido no continuar.
   parameters:
     type: object
     properties: {}

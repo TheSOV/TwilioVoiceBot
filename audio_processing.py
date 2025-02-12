@@ -27,7 +27,7 @@ class AudioRecorder:
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         os.makedirs(self.file_dir, exist_ok=True)
         if phone_number is not None:
-            self.wav_filename = f'{self.file_dir}/combined_audio_{phone_number}.wav'
+            self.wav_filename = f'{self.file_dir}/combined_audio_{phone_number}_{timestamp}.wav'
         else:
             self.wav_filename = f'{self.file_dir}/combined_audio_{timestamp}.wav'
         self.wav_file = wave.open(self.wav_filename, 'wb')
@@ -96,10 +96,8 @@ class AudioRecorder:
             self.wav_file = None
             self.start_time = None
 
-# Global audio recorder instance
-audio_recorder = AudioRecorder()
 
-def process_input_audio(ulaw_data, wav_filename=None, wav_file=None, file_dir='recordings/input', phone_number=None):
+def process_input_audio(ulaw_data, audio_recorder, wav_filename=None, wav_file=None, file_dir='recordings/input', phone_number=None):
     # Convert ulaw to PCM16
     pcm_data = audioop.ulaw2lin(ulaw_data, 2)  # 2 bytes per sample
     
@@ -126,7 +124,7 @@ def process_input_audio(ulaw_data, wav_filename=None, wav_file=None, file_dir='r
 
     return audio_append, audio_recorder.wav_filename, audio_recorder.wav_file
 
-def process_output_audio(ulaw_data, wav_filename=None, wav_file=None, file_dir='recordings/output', stream_sid=None, phone_number=None):
+def process_output_audio(ulaw_data, audio_recorder, wav_filename=None, wav_file=None, file_dir='recordings/output', stream_sid=None, phone_number=None):
     """
     Process output audio from OpenAI, converting ulaw to WAV.
 

@@ -21,7 +21,7 @@ async def initialize_session(openai_ws, voice, system_message):
     tools = load_tools()
     system_tools = list(tools.values())
 
-    # print('Tools:', tools)
+    print('Tools:', system_tools)
     
     session_update = {
         "type": "session.update",

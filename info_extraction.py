@@ -1,7 +1,7 @@
 import os
 from dotenv import load_dotenv
 from openai import OpenAI
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 import yaml
 from pyannote.audio import Pipeline
 
@@ -16,9 +16,9 @@ OPENAI_TEXT_MODEL = os.getenv('OPENAI_TEXT_MODEL')
 HUGGINGFACE_TOKEN = os.getenv('HUGGINGFACE_TOKEN')
 
 class ClientInfoExtraction(BaseModel):
-    place: str
-    budget: int
-    other_requirements: str
+    place: str = Field(description="El lugar o lugares en los que el cliente desearía vivir.")
+    budget: int = Field(description="El presupuesto máximo que el cliente está dispuesto a gastar.")
+    other_requirements: str = Field(description="Requisitos o preferencias adicionales para la vivienda.")
 
 class InfoExtractionAgent:
     def __init__(self):

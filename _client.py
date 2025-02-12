@@ -101,8 +101,8 @@ if __name__ == "__main__":
         os.makedirs(save_path, exist_ok=True)
         
         # Copy the recording to the new directory
-        recordings_combined_folder = os.path.join(os.path.dirname(__file__), "recordings", "combined")
-        recording_source = os.path.join(recordings_combined_folder, f"combined_audio_{number}.wav")
+        recordings_combined_folder = os.path.join(os.path.dirname(__file__))
+        recording_source = os.path.join(recordings_combined_folder, response.json()["audio_file_name"])
         recording_destination = os.path.join(save_path, f"combined_audio_{number}.wav")
         shutil.copy2(recording_source, recording_destination)
 

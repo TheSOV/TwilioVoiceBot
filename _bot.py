@@ -15,8 +15,9 @@ import yaml
 import copy
 import ngrok
 import traceback
+import time
 
-from audio_processing import process_input_audio, process_output_audio
+from audio_processing import process_input_audio, process_output_audio, AudioRecorder
 from bot_initialization import initialize_session
 
 load_dotenv(override=True)
@@ -25,6 +26,9 @@ load_dotenv(override=True)
 TWILIO_ACCOUNT_SID = os.getenv('TWILIO_ACCOUNT_SID')
 TWILIO_AUTH_TOKEN = os.getenv('TWILIO_AUTH_TOKEN')
 PHONE_NUMBER_FROM = os.getenv('PHONE_NUMBER_FROM')
+
+CALL_DURATION_LIMIT = int(os.getenv('CALL_DURATION_LIMIT', 120))
+
 OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
 VOICE = os.getenv('OPENAI_AUDIO_VOICE', 'coral')
 OPENAI_REALTIME_MODEL = os.getenv('OPENAI_REALTIME_MODEL', 'gpt-4o-mini-realtime-preview-2024-12-17')
@@ -163,11 +167,14 @@ async def handle_media_stream(websocket: WebSocket):
             "OpenAI-Beta": "realtime=v1"
         }
     
+    call_init_time = time.time()
+    call_end_time = None
+    call_end_called = False
+    audio_recorder = AudioRecorder()
     stream_sid = None
     input_wav_file = None
     output_wav_file = None
     wav_filename = None  # Initialize wav_filename
-    end_call = False
     current_call = None
     global calls
     
@@ -179,10 +186,38 @@ async def handle_media_stream(websocket: WebSocket):
         
         async def receive_from_twilio():
             """Receive audio data from Twilio and send it to the OpenAI Realtime API."""
-            nonlocal stream_sid, input_wav_file, wav_filename, output_wav_file, end_call, current_call
+            nonlocal stream_sid, input_wav_file, wav_filename, output_wav_file, current_call, call_init_time, call_end_called, call_end_time
             
             try:
+                
                 async for message in websocket.iter_text():
+                    if call_end_time is not None:
+                        if time.time() - call_end_time >= 5:                            
+                            client.calls(current_call['call_sid']).update(status="completed")
+                            current_call['call_status'] = "completed"
+
+                    # check if the call has exceeded the duration limit
+                    if CALL_DURATION_LIMIT > 0 and not call_end_called and time.time() - call_init_time >= CALL_DURATION_LIMIT:
+                        final_conversation_item = {
+                                                    "type": "conversation.item.create",
+                                                    "item": {
+                                                        "type": "message",
+                                                        "role": "assistant",
+                                                        "content": [
+                                                            {
+                                                                "type": "text",
+                                                                "text": "Discúlpate, explica al cliente que el tiempo de llamada ha terminado, que un miembro de nuestro equipo se comunicará con él, y usa la herramienta 'end_call' para terminar la llamada."
+                                                            }
+                                                        ]
+                                                    }
+                                                }
+                        await openai_ws.send(json.dumps(final_conversation_item))
+                        await openai_ws.send(json.dumps({"type": "response.create"}))
+                        call_end_called = True
+                    
+                    if current_call:
+                        current_call['call_duration'] = time.time() - call_init_time
+
                     # get messages at the socket connected to Twilio, it will have all the audio streams from the user
                     data = json.loads(message)
 
@@ -202,7 +237,7 @@ async def handle_media_stream(websocket: WebSocket):
                         # Process the audio data, in process_input_audio function you can add new filter features 
                         # if required, also handle the wav file creation to record the input audio, for later processing
                         # and use.
-                        audio_append, wav_filename, input_wav_file = process_input_audio(ulaw_data, wav_filename, input_wav_file, phone_number=current_call['phone_number'])
+                        audio_append, wav_filename, input_wav_file = process_input_audio(ulaw_data, audio_recorder, wav_filename, input_wav_file, phone_number=current_call['phone_number'])
                         
                         # Send the processed audio data to the OpenAI Realtime API
                         sent = False
@@ -256,8 +291,6 @@ async def handle_media_stream(websocket: WebSocket):
                     traceback.print_exc()
                     print(f"Error closing OpenAI WebSocket: {e}")
 
-                # client.calls(call_sid).update(status="completed")
-
                 # Close the WAV file to properly terminate recording
                 if input_wav_file:
                     input_wav_file.close()
@@ -270,7 +303,7 @@ async def handle_media_stream(websocket: WebSocket):
 
         async def send_to_twilio():
             """Receive events from the OpenAI Realtime API, send audio back to Twilio."""
-            nonlocal stream_sid, output_wav_file, wav_filename, current_call
+            nonlocal stream_sid, output_wav_file, wav_filename, current_call, call_end_time
             try:
                 #similar to the receive_from_twilio function, this function will receive the events from the OpenAI Realtime API
                 # and send the audio back to Twilio
@@ -291,11 +324,13 @@ async def handle_media_stream(websocket: WebSocket):
                             # Process the output audio and save to WAV
                             audio_delta, wav_filename, output_wav_file = process_output_audio(
                                 response['delta'], 
+                                audio_recorder,
                                 wav_filename, 
                                 output_wav_file, 
                                 stream_sid=stream_sid,
                                 phone_number=current_call['phone_number']
                             )
+                            current_call['audio_file_name'] = wav_filename
                             
                             # Send the audio delta back to Twilio
                             if audio_delta:
@@ -332,11 +367,25 @@ async def handle_media_stream(websocket: WebSocket):
 
                                     if tool_name == 'end_call':
                                         try:
-                                            asyncio.sleep(5)
-                                            client.calls(current_call['call_sid']).update(status="completed")
-                                            current_call['call_status'] = "completed"
-                                            asyncio.sleep(5)
-                                            break
+                                            # trigger Good Bye message to the user
+                                            final_conversation_item = {
+                                                "type": "conversation.item.create",
+                                                "item": {
+                                                    "type": "message",
+                                                    "role": "assistant",
+                                                    "content": [
+                                                        {
+                                                            "type": "text",
+                                                            "text": "Despídete del cliente cordialmente."
+                                                        }
+                                                    ]
+                                                }
+                                            }
+                                            await openai_ws.send(json.dumps(final_conversation_item))
+                                            await openai_ws.send(json.dumps({"type": "response.create"}))
+                                            call_end_time = time.time()
+                                            
+
                                         except Exception as end_call_error:
                                             traceback.print_exc()
                                             print(f"Error ending call: {end_call_error}")
@@ -354,16 +403,7 @@ async def handle_media_stream(websocket: WebSocket):
         except Exception as global_error:
             traceback.print_exc()
             print(f"Unexpected global error in handle_media_stream: {global_error}")
-            
-            # Attempt to end the call if possible
-            try:
-                # if call_sid:
-                #     client.calls(call_sid).update(status="completed")
-                pass
-            except Exception as end_call_error:
-                traceback.print_exc()
-                print(f"Error force-ending call: {end_call_error}")
-            
+                        
             current_call['call_status'] = "disconnected"
             
             # Re-raise the error if needed for further handling
