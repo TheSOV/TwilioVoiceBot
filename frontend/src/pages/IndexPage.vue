@@ -16,6 +16,8 @@
       @edit="editUser"
       @delete="confirmDelete"
       @call="makeCall"
+      @bulk-delete="confirmBulkDelete"
+      ref="usersTableRef"
     />
 
     <!-- Add/Edit Dialog -->
@@ -41,7 +43,12 @@
       <q-card>
         <q-card-section class="row items-center">
           <q-avatar icon="warning" color="negative" text-color="white" />
-          <span class="q-ml-sm">Are you sure you want to delete this client?</span>
+          <span class="q-ml-sm">
+            {{ bulkDeleteUsers ? 
+              `Are you sure you want to delete ${bulkDeleteUsers.length} selected clients?` :
+              'Are you sure you want to delete this client?'
+            }}
+          </span>
         </q-card-section>
 
         <q-card-actions align="right">
@@ -109,13 +116,16 @@ export default {
     const showDeleteDialog = ref(false)
     const showCallDialog = ref(false)
     const selectedUser = ref(null)
+    const bulkDeleteUsers = ref(null)
     const editMode = ref(false)
     const calling = ref(false)
+    const usersTableRef = ref(null)
 
     const closeDialog = () => {
       showAddDialog.value = false
       showCallDialog.value = false
       selectedUser.value = null
+      bulkDeleteUsers.value = null
       editMode.value = false
     }
 
@@ -127,23 +137,47 @@ export default {
 
     const confirmDelete = (user) => {
       selectedUser.value = user
+      bulkDeleteUsers.value = null
+      showDeleteDialog.value = true
+    }
+
+    const confirmBulkDelete = (users) => {
+      bulkDeleteUsers.value = users
+      selectedUser.value = null
       showDeleteDialog.value = true
     }
 
     const deleteUser = async () => {
       try {
-        await usersStore.deleteUser(selectedUser.value.phone_number)
+        if (bulkDeleteUsers.value) {
+          // Handle bulk delete
+          for (const user of bulkDeleteUsers.value) {
+            await usersStore.deleteUser(user.phone_number)
+          }
+          $q.notify({
+            type: 'positive',
+            message: `${bulkDeleteUsers.value.length} clients deleted successfully`
+          })
+          // Clear selections only after successful deletion
+          if (usersTableRef.value) {
+            usersTableRef.value.selected = []
+          }
+        } else {
+          // Handle single delete
+          await usersStore.deleteUser(selectedUser.value.phone_number)
+          $q.notify({
+            type: 'positive',
+            message: 'Client deleted successfully'
+          })
+        }
         showDeleteDialog.value = false
         selectedUser.value = null
-        $q.notify({
-          type: 'positive',
-          message: 'Client deleted successfully'
-        })
+        bulkDeleteUsers.value = null
       } catch (err) {
         console.error('Delete error:', err)
         $q.notify({
           type: 'negative',
-          message: `Failed to delete client: ${err.message}`
+          message: `Failed to delete client(s): ${err.message}`
         })
       }
     }
@@ -228,16 +262,19 @@ export default {
       showDeleteDialog,
       showCallDialog,
       selectedUser,
+      bulkDeleteUsers,
       editMode,
       calling,
+      callDialogProps,
+      closeDialog,
       editUser,
       confirmDelete,
+      confirmBulkDelete,
       deleteUser,
       makeCall,
       confirmCall,
       onSubmit,
-      closeDialog,
-      callDialogProps
+      usersTableRef
     }
   }
 }
