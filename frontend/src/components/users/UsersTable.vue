@@ -191,6 +191,7 @@ import { defineComponent, ref, computed } from 'vue'
 import { useQuasar } from 'quasar'
 import { useCallListStore } from 'src/stores/call_list'
 import CallHistoryDialog from './CallHistoryDialog.vue'
+import { formatDateWithTimezone } from 'src/utils/date'
 
 export default defineComponent({
   name: 'UsersTable',
@@ -219,32 +220,36 @@ export default defineComponent({
 
     const columns = [
       {
+        name: 'name',
+        required: true,
+        label: 'Name',
+        align: 'left',
+        field: row => row.name || '-',
+        sortable: true
+      },
+      {
         name: 'phone_number',
         required: true,
-        label: 'Phone Number',
+        label: 'Phone',
         align: 'left',
         field: 'phone_number',
         sortable: true
       },
       {
-        name: 'name',
-        label: 'Name',
+        name: 'created_at',
+        label: 'Added On',
         align: 'left',
-        field: 'name',
+        field: 'created_at',
+        format: val => formatDateWithTimezone(val),
         sortable: true
       },
       {
-        name: 'comments',
-        label: 'Comments',
+        name: 'last_call',
+        label: 'Last Call',
         align: 'left',
-        field: 'comments'
-      },
-      {
-        name: 'last_called_at',
-        label: 'Last Called',
-        align: 'left',
-        field: 'last_called_at',
-        format: (val) => formatLastCalledDate(val)
+        field: row => row.call_history?.[0]?.timestamp || null,
+        format: val => val ? formatDateWithTimezone(val) : 'Never',
+        sortable: true
       },
       {
         name: 'actions',
@@ -252,40 +257,6 @@ export default defineComponent({
         align: 'center'
       }
     ]
-
-    const formatLastCalledDate = (dateValue) => {
-      if (!dateValue) return 'Never'
-      
-      const date = new Date(dateValue)
-      const formatter = new Intl.RelativeTimeFormat(undefined, {
-        numeric: 'auto',
-        style: 'long'
-      })
-      
-      const now = new Date()
-      const diffInSeconds = (now.getTime() - date.getTime()) / 1000
-      
-      const intervals = [
-        { seconds: 60, divisor: 1, unit: 'second' },
-        { seconds: 3600, divisor: 60, unit: 'minute' },
-        { seconds: 86400, divisor: 3600, unit: 'hour' },
-        { seconds: 2592000, divisor: 86400, unit: 'day' },
-        { seconds: 31536000, divisor: 2592000, unit: 'month' },
-        { seconds: Infinity, divisor: 31536000, unit: 'year' }
-      ]
-      
-      const interval = intervals.find(i => diffInSeconds < i.seconds)
-      
-      if (interval) {
-        const value = Math.floor(diffInSeconds / interval.divisor)
-        return formatter.format(-value, interval.unit)
-      }
-      
-      return date.toLocaleString(undefined, {
-        dateStyle: 'medium',
-        timeStyle: 'short'
-      })
-    }
 
     const onDeleteSelected = () => {
       emit('bulk-delete', selected.value)
@@ -334,7 +305,6 @@ export default defineComponent({
       callList: computed(() => callListStore.callList),
       calling: computed(() => callListStore.calling),
       callListStore,
-      formatLastCalledDate,
       onDeleteSelected,
       addSelectedToCallList,
       removeFromCallList,

@@ -43,7 +43,7 @@
           <!-- Timestamp column -->
           <template v-slot:body-cell-timestamp="props">
             <q-td :props="props">
-              {{ formatDate(props.value) }}
+              {{ props.value }}
             </q-td>
           </template>
 
@@ -139,8 +139,8 @@
 
 <script>
 import { defineComponent, ref, computed } from 'vue'
-import { date } from 'quasar'
 import { useUsersStore } from 'stores/users'
+import { formatDateWithTimezone } from 'src/utils/date'
 
 export default defineComponent({
   name: 'CallHistoryDialog',
@@ -181,6 +181,7 @@ export default defineComponent({
         label: 'Date & Time',
         align: 'left',
         field: 'timestamp',
+        format: val => formatDateWithTimezone(val),
         sortable: true
       },
       {
@@ -237,10 +238,6 @@ export default defineComponent({
       return `${minutes}:${seconds.toString().padStart(2, '0')}`
     }
 
-    const formatDate = (timestamp) => {
-      return date.formatDate(timestamp, 'YYYY-MM-DD HH:mm:ss')
-    }
-
     const formatFieldName = (key) => {
       return key.split('_').map(word => 
         word.charAt(0).toUpperCase() + word.slice(1)
@@ -279,7 +276,6 @@ export default defineComponent({
       currentAudioUrl,
       getStatusColor,
       formatDuration,
-      formatDate,
       formatFieldName,
       playAudio,
       showTranscription,

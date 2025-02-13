@@ -20,7 +20,7 @@ import traceback
 import time
 from pydantic import BaseModel
 from tinydb import TinyDB, Query
-from datetime import datetime
+from datetime import datetime, timezone
 from info_extraction import InfoExtractionAgent
 
 from audio_processing import process_input_audio, process_output_audio, AudioRecorder
@@ -98,12 +98,21 @@ client = Client(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
 calls = []
 
 # Initialize database
-db = TinyDB('db.json')
-users_table = db.table('users')
-calls_table = db.table('calls')
+def init_db():
+    """Initialize the database with required tables"""
+    db = TinyDB('db.json')
+    users_table = db.table('users')
+    calls_table = db.table('calls')
+    return db, users_table, calls_table
+
+db, users_table, calls_table = init_db()
 
 # Initialize info extraction agent
 info_agent = InfoExtractionAgent()
+
+def get_utc_timestamp():
+    """Get current UTC timestamp in ISO format with Z suffix to indicate UTC"""
+    return datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
 
 RECORDINGS_FOLDER = os.path.abspath(os.path.join(os.path.dirname(__file__), 'recordings'))
 
@@ -466,16 +475,29 @@ async def handle_media_stream(websocket: WebSocket):
 # User endpoints
 @app.post('/api/users')
 async def create_user(user_data: dict = Body(...)):
+    """Create a new user"""
     if not user_data.get('phone_number'):
         raise HTTPException(status_code=400, detail="Phone number is required")
     
-    user_data['created_at'] = datetime.now().isoformat()
+    # Add creation timestamp and initialize call history
+    user_data['created_at'] = get_utc_timestamp()
+    user_data['call_history'] = []
+    
+    # Check if phone number already exists
+    User = Query()
+    existing_user = users_table.get(User.phone_number == user_data['phone_number'])
+    if existing_user:
+        raise HTTPException(status_code=400, detail="Phone number already exists")
+    
     users_table.insert(user_data)
     return user_data
 
 @app.get('/api/users')
 async def get_users():
-    return users_table.all()
+    """Get all users"""
+    users = users_table.all()
+    # Sort users by created_at in descending order
+    return sorted(users, key=lambda x: x.get('created_at', ''), reverse=True)
 
 @app.get('/api/users/{phone_number}')
 async def get_user(phone_number: str):
@@ -491,7 +513,7 @@ async def update_user(phone_number: str, user_data: dict = Body(...)):
     if not users_table.get(UserQuery.phone_number == phone_number):
         raise HTTPException(status_code=404, detail="User not found")
     
-    user_data['updated_at'] = datetime.now().isoformat()
+    user_data['updated_at'] = get_utc_timestamp()
     users_table.update(user_data, UserQuery.phone_number == phone_number)
     return user_data
 
@@ -516,7 +538,7 @@ async def record_call(phone_number: str, call_data: dict = Body(...)):
     
     # Prepare call record
     call_record = {
-        "timestamp": datetime.now().isoformat(),
+        "timestamp": get_utc_timestamp(),
         **call_data
     }
     
@@ -540,7 +562,7 @@ async def record_call(phone_number: str, call_data: dict = Body(...)):
         user['call_history'] = []
     
     user['call_history'].append(call_record)
-    user['last_called_at'] = datetime.now().isoformat()
+    user['last_called_at'] = get_utc_timestamp()
     
     # Update user in the database
     users_table.update(user, UserQuery.phone_number == phone_number)
