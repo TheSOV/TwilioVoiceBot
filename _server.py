@@ -2,7 +2,7 @@ import os
 import json
 import base64
 import asyncio
-from fastapi import FastAPI, HTTPException, WebSocket, Query, Request, Body
+from fastapi import FastAPI, HTTPException, WebSocket, Request, Body
 from fastapi.responses import JSONResponse, FileResponse
 from fastapi.websockets import WebSocketDisconnect
 from fastapi.staticfiles import StaticFiles
@@ -566,6 +566,80 @@ async def record_call(phone_number: str, call_data: dict = Body(...)):
     users_table.update(user, UserQuery.phone_number == phone_number)
     
     return call_record
+
+@app.get('/api/call_histories')
+async def get_call_histories(
+    start_date: str = None,
+    end_date: str = None,
+    phone_number: str = None,
+    call_status: str = None,
+    extracted_info_keyword: str = None
+):
+    # Start with all users
+    users = users_table.all()
+    
+    # Filter users by call history
+    filtered_call_histories = []
+    
+    for user in users:
+        if 'call_history' not in user:
+            continue
+        
+        for call in user['call_history']:
+            # Apply filters
+            match = True
+            
+            # Phone number filter
+            if phone_number and phone_number.lower() not in user['phone_number'].lower():
+                match = False
+                continue
+            
+            # Call status filter
+            if call_status and call.get('call_status', '').lower() != call_status.lower():
+                match = False
+                continue
+            
+            # Date filters
+            if start_date:
+                call_date = datetime.fromisoformat(call['timestamp'].replace('Z', '+00:00'))
+                start = datetime.fromisoformat(start_date.replace('Z', '+00:00'))
+                if call_date < start:
+                    match = False
+                    continue
+            
+            if end_date:
+                call_date = datetime.fromisoformat(call['timestamp'].replace('Z', '+00:00'))
+                end = datetime.fromisoformat(end_date.replace('Z', '+00:00'))
+                if call_date > end:
+                    match = False
+                    continue
+            
+            # Extracted info keyword filter
+            if extracted_info_keyword:
+                if 'extracted_info' not in call:
+                    match = False
+                    continue
+                
+                keyword_match = False
+                for value in call['extracted_info'].values():
+                    if extracted_info_keyword.lower() in str(value).lower():
+                        keyword_match = True
+                        break
+                
+                if not keyword_match:
+                    match = False
+                    continue
+            
+            # If all filters pass, add the call with user's phone number
+            if match:
+                call_with_phone = call.copy()
+                call_with_phone['phone_number'] = user['phone_number']
+                filtered_call_histories.append(call_with_phone)
+    
+    # Sort by timestamp in descending order
+    filtered_call_histories.sort(key=lambda x: x['timestamp'], reverse=True)
+    
+    return filtered_call_histories
 
 # Add CORS middleware
 app.add_middleware(

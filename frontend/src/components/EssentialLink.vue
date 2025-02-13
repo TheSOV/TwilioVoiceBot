@@ -1,9 +1,9 @@
 <template>
   <q-item
     clickable
-    tag="a"
-    target="_blank"
-    :href="props.link"
+    :to="isInternalLink ? props.link : undefined"
+    :href="!isInternalLink ? props.link : undefined"
+    :target="!isInternalLink ? '_blank' : undefined"
   >
     <q-item-section
       v-if="props.icon"
@@ -20,6 +20,8 @@
 </template>
 
 <script setup>
+import { computed } from 'vue'
+
 const props = defineProps({
   title: {
     type: String,
@@ -40,5 +42,10 @@ const props = defineProps({
     type: String,
     default: ''
   }
+})
+
+const isInternalLink = computed(() => {
+  // Check if link is relative (starts with /) or is root path
+  return props.link.startsWith('/') || props.link === ''
 })
 </script>
