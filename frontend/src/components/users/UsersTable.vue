@@ -30,30 +30,48 @@
         v-model:selected="selected"
       >
         <template v-slot:body-cell-actions="props">
-          <q-td :props="props">
-            <q-btn-group flat>
-              <q-btn
-                flat
-                round
-                color="primary"
-                icon="edit"
-                @click="$emit('edit', props.row)"
-              />
-              <q-btn
-                flat
-                round
-                color="negative"
-                icon="delete"
-                @click="$emit('delete', props.row)"
-              />
-              <q-btn
-                flat
-                round
-                color="secondary"
-                icon="phone"
-                @click="$emit('call', props.row)"
-              />
-            </q-btn-group>
+          <q-td :props="props" class="q-gutter-sm">
+            <q-btn
+              flat
+              round
+              dense
+              color="info"
+              icon="history"
+              @click="showCallHistory(props.row)"
+              :disable="!props.row.call_history?.length"
+            >
+              <q-tooltip>View Call History</q-tooltip>
+            </q-btn>
+            <q-btn
+              flat
+              round
+              dense
+              color="primary"
+              icon="phone"
+              @click="$emit('call', props.row)"
+            >
+              <q-tooltip>Call Client</q-tooltip>
+            </q-btn>
+            <q-btn
+              flat
+              round
+              dense
+              color="warning"
+              icon="edit"
+              @click="$emit('edit', props.row)"
+            >
+              <q-tooltip>Edit Client</q-tooltip>
+            </q-btn>
+            <q-btn
+              flat
+              round
+              dense
+              color="negative"
+              icon="delete"
+              @click="$emit('delete', props.row)"
+            >
+              <q-tooltip>Delete Client</q-tooltip>
+            </q-btn>
           </q-td>
         </template>
       </q-table>
@@ -158,6 +176,13 @@
         </q-card-actions>
       </q-card>
     </q-dialog>
+
+    <!-- Call History Dialog -->
+    <call-history-dialog
+      v-model="showCallHistoryDialog"
+      :user="selectedUser"
+      :loading="false"
+    />
   </div>
 </template>
 
@@ -165,9 +190,13 @@
 import { defineComponent, ref, computed } from 'vue'
 import { useQuasar } from 'quasar'
 import { useCallListStore } from 'src/stores/call_list'
+import CallHistoryDialog from './CallHistoryDialog.vue'
 
 export default defineComponent({
   name: 'UsersTable',
+  components: {
+    CallHistoryDialog
+  },
   props: {
     users: {
       type: Array,
@@ -185,6 +214,8 @@ export default defineComponent({
     
     const selected = ref([])
     const selectedCallListUsers = ref([])
+    const showCallHistoryDialog = ref(false)
+    const selectedUser = ref(null)
 
     const columns = [
       {
@@ -289,10 +320,17 @@ export default defineComponent({
       }
     }
 
+    const showCallHistory = (user) => {
+      selectedUser.value = user
+      showCallHistoryDialog.value = true
+    }
+
     return {
       columns,
       selected,
       selectedCallListUsers,
+      showCallHistoryDialog,
+      selectedUser,
       callList: computed(() => callListStore.callList),
       calling: computed(() => callListStore.calling),
       callListStore,
@@ -301,7 +339,8 @@ export default defineComponent({
       addSelectedToCallList,
       removeFromCallList,
       removeSelectedFromCallList,
-      callAllInList
+      callAllInList,
+      showCallHistory
     }
   }
 })

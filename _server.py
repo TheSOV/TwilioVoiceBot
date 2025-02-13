@@ -2,7 +2,7 @@ import os
 import json
 import base64
 import asyncio
-from fastapi import FastAPI, WebSocket, Query, Request, Body, HTTPException
+from fastapi import FastAPI, HTTPException, WebSocket, Query, Request, Body
 from fastapi.responses import JSONResponse, FileResponse
 from fastapi.websockets import WebSocketDisconnect
 from fastapi.staticfiles import StaticFiles
@@ -25,6 +25,8 @@ from info_extraction import InfoExtractionAgent
 
 from audio_processing import process_input_audio, process_output_audio, AudioRecorder
 from bot_initialization import initialize_session
+
+import urllib.parse
 
 load_dotenv(override=True)
 
@@ -102,6 +104,8 @@ calls_table = db.table('calls')
 
 # Initialize info extraction agent
 info_agent = InfoExtractionAgent()
+
+RECORDINGS_FOLDER = os.path.abspath(os.path.join(os.path.dirname(__file__), 'recordings'))
 
 @app.get("/")
 async def serve_spa(request: Request):
@@ -552,9 +556,11 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# static files
-app.mount("/", StaticFiles(directory="static", html=True), name="static")
+# Mount recordings directory for direct file serving
+app.mount("/recordings", StaticFiles(directory=RECORDINGS_FOLDER), name="recordings")
 
+# Mount static files last to not interfere with other routes
+app.mount("/", StaticFiles(directory="static", html=True), name="static")
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=PORT)
