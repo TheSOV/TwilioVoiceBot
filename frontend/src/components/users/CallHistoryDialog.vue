@@ -13,12 +13,56 @@
         </div>
 
         <q-table
-          :rows="sortedCallHistory"
+          :rows="filteredCalls"
           :columns="columns"
           row-key="timestamp"
-          :pagination="{ rowsPerPage: 10 }"
           :loading="loading"
         >
+          <!-- Top row slot for global filter -->
+          <template v-slot:top>
+            <div class="row full-width q-gutter-sm">
+              <q-input
+                dense
+                debounce="300"
+                v-model="filter"
+                placeholder="Global search"
+                class="col-grow"
+                clearable
+              >
+                <template v-slot:append>
+                  <q-icon name="search" />
+                </template>
+              </q-input>
+            </div>
+            <div class="row full-width q-gutter-sm q-mt-sm">
+              <div v-for="col in columns.filter(c => c.name !== 'actions')" :key="col.name" class="col">
+                <q-input 
+                  dense
+                  debounce="300"
+                  v-model="columnFilters[col.name]"
+                  :placeholder="`Filter ${col.label}`"
+                  clearable
+                >
+                  <template v-slot:append>
+                    <q-icon name="filter_alt" size="xs" />
+                  </template>
+                </q-input>
+              </div>
+            </div>
+          </template>
+
+          <template v-slot:header="props">
+            <q-tr :props="props">
+              <q-th
+                v-for="col in props.cols"
+                :key="col.name"
+                :props="props"
+              >
+                {{ col.label }}
+              </q-th>
+            </q-tr>
+          </template>
+
           <!-- Status column -->
           <template v-slot:body-cell-call_status="props">
             <q-td :props="props">
@@ -138,7 +182,7 @@
 </template>
 
 <script>
-import { defineComponent, ref, computed } from 'vue'
+import { defineComponent, ref, computed, watch } from 'vue'
 import { useUsersStore } from 'stores/users'
 import { formatDateWithTimezone } from 'src/utils/date'
 
@@ -160,7 +204,7 @@ export default defineComponent({
     }
   },
 
-  emits: ['update:modelValue'],
+  emits: [],
 
   setup(props, { emit }) {
     const usersStore = useUsersStore()
@@ -173,6 +217,15 @@ export default defineComponent({
     const showAudioDialog = ref(false)
     const selectedCall = ref(null)
     const currentAudioUrl = ref(null)
+
+    const filter = ref('')
+    const columnFilters = ref({
+      timestamp: '',
+      call_status: '',
+      call_duration: '',
+      extracted_info: '',
+      actions: ''
+    })
 
     const columns = [
       {
@@ -214,10 +267,55 @@ export default defineComponent({
       }
     ]
 
-    const sortedCallHistory = computed(() => {
+    const applyColumnFilters = (row) => {
+      return Object.entries(columnFilters.value).every(([key, filterValue]) => {
+        if (!filterValue || key === 'actions') return true
+        
+        const lowercaseFilter = filterValue.toLowerCase()
+        let cellValue = row[key]
+        
+        // Handle date fields
+        if (key === 'timestamp' && cellValue) {
+          const formattedDate = formatDateWithTimezone(cellValue).toLowerCase()
+          return formattedDate.includes(lowercaseFilter)
+        }
+        
+        // Handle extracted info
+        if (key === 'extracted_info') {
+          return JSON.stringify(cellValue || {}).toLowerCase().includes(lowercaseFilter)
+        }
+        
+        // Handle duration
+        if (key === 'call_duration' && cellValue != null) {
+          return formatDuration(cellValue).toLowerCase().includes(lowercaseFilter)
+        }
+        
+        // Handle regular fields
+        return String(cellValue || '').toLowerCase().includes(lowercaseFilter)
+      })
+    }
+
+    const filteredCalls = computed(() => {
       if (!props.user?.call_history) return []
-      return [...props.user.call_history].sort((a, b) => {
+      
+      const allCalls = [...props.user.call_history].sort((a, b) => {
         return new Date(b.timestamp) - new Date(a.timestamp)
+      })
+      
+      const globalFilter = filter.value.toLowerCase()
+      
+      return allCalls.filter(call => {
+        const matchesColumnFilters = applyColumnFilters(call)
+        
+        if (!globalFilter) return matchesColumnFilters
+        
+        const matchesGlobal = 
+          formatDateWithTimezone(call.timestamp).toLowerCase().includes(globalFilter) ||
+          String(call.call_status || '').toLowerCase().includes(globalFilter) ||
+          formatDuration(call.call_duration).toLowerCase().includes(globalFilter) ||
+          JSON.stringify(call.extracted_info || {}).toLowerCase().includes(globalFilter)
+        
+        return matchesColumnFilters && matchesGlobal
       })
     })
 
@@ -266,19 +364,35 @@ export default defineComponent({
       }
     }
 
+    const clearFilters = () => {
+      filter.value = ''
+      Object.keys(columnFilters.value).forEach(key => {
+        columnFilters.value[key] = ''
+      })
+    }
+
+    watch(() => props.modelValue, (newVal) => {
+      if (newVal) {
+        clearFilters()
+      }
+    })
+
     return {
       show,
+      filter,
       columns,
-      sortedCallHistory,
+      columnFilters,
+      filteredCalls,
+      selectedCall,
       showTranscriptionDialog,
       showAudioDialog,
-      selectedCall,
       currentAudioUrl,
       getStatusColor,
       formatDuration,
       formatFieldName,
       playAudio,
       showTranscription,
+      clearFilters,
       refreshUserData
     }
   }
@@ -299,5 +413,10 @@ export default defineComponent({
 
 .extracted-info-item:last-child {
   margin-bottom: 0;
+}
+
+.q-table th {
+  white-space: normal;
+  padding: 8px 16px;
 }
 </style>

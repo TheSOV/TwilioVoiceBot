@@ -26,8 +26,6 @@ from info_extraction import InfoExtractionAgent
 from audio_processing import process_input_audio, process_output_audio, AudioRecorder
 from bot_initialization import initialize_session
 
-import urllib.parse
-
 load_dotenv(override=True)
 
 # Load environment variables from .env file

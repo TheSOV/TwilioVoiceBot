@@ -22,13 +22,65 @@
       </div>
 
       <q-table
-        :rows="users"
+        :rows="filteredUsers"
         :columns="columns"
         row-key="phone_number"
         :loading="loading"
         selection="multiple"
         v-model:selected="selected"
+        :filter="filter"
       >
+        <template v-slot:top>
+          <div class="row full-width q-gutter-sm">
+            <q-input
+              dense
+              debounce="300"
+              v-model="filter"
+              placeholder="Global search"
+              class="col-grow"
+            >
+              <template v-slot:append>
+                <q-icon name="search" />
+              </template>
+            </q-input>
+          </div>
+          <div class="row full-width q-gutter-sm q-mt-sm">
+            <div v-for="col in columns" :key="col.name" :class="col.name === 'select' || col.name === 'actions' ? 'col-auto' : 'col'">
+              <q-input 
+                v-if="col.filterable"
+                dense
+                debounce="300"
+                v-model="columnFilters[col.name]"
+                :placeholder="`Filter ${col.label}`"
+                clearable
+                @input="applyColumnFilters"
+              >
+                <template v-slot:append>
+                  <q-icon name="filter_alt" size="xs" />
+                </template>
+              </q-input>
+            </div>
+          </div>
+        </template>
+
+        <template v-slot:header="props">
+          <q-tr :props="props">
+            <q-th 
+              v-for="col in props.cols" 
+              :key="col.name" 
+              :props="props"
+              :style="getColumnStyle(col.name)"
+            >
+              <template v-if="col.name === 'select'">
+                <q-checkbox v-model="props.selected" />
+              </template>
+              <template v-else>
+                {{ col.label }}
+              </template>
+            </q-th>
+          </q-tr>
+        </template>
+
         <template v-slot:body-cell-actions="props">
           <q-td :props="props" class="q-gutter-sm">
             <q-btn
@@ -217,15 +269,33 @@ export default defineComponent({
     const selectedCallListUsers = ref([])
     const showCallHistoryDialog = ref(false)
     const selectedUser = ref(null)
+    const filter = ref('')
+    const columnFilters = ref({
+      select: '',  
+      name: '',
+      phone_number: '',
+      created_at: '',
+      last_call: '',
+      actions: ''  
+    })
 
     const columns = [
+      {
+        name: 'select',
+        label: '',
+        field: 'select',
+        sortable: false,
+        filterable: false
+      },
       {
         name: 'name',
         required: true,
         label: 'Name',
         align: 'left',
-        field: row => row.name || '-',
-        sortable: true
+        field: 'name',
+        format: val => val || '-',
+        sortable: true,
+        filterable: true
       },
       {
         name: 'phone_number',
@@ -233,7 +303,8 @@ export default defineComponent({
         label: 'Phone',
         align: 'left',
         field: 'phone_number',
-        sortable: true
+        sortable: true,
+        filterable: true
       },
       {
         name: 'created_at',
@@ -241,22 +312,84 @@ export default defineComponent({
         align: 'left',
         field: 'created_at',
         format: val => formatDateWithTimezone(val),
-        sortable: true
+        sortable: true,
+        filterable: true
       },
       {
         name: 'last_call',
         label: 'Last Call',
         align: 'left',
-        field: row => row.call_history?.[0]?.timestamp || null,
+        field: (user) => user.call_history?.[0]?.timestamp || null,
         format: val => val ? formatDateWithTimezone(val) : 'Never',
-        sortable: true
+        sortable: true,
+        filterable: true
       },
       {
         name: 'actions',
         label: 'Actions',
-        align: 'center'
+        align: 'center',
+        sortable: false,
+        filterable: false
       }
     ]
+
+    const getColumnStyle = (columnName) => {
+      if (columnName === 'actions') {
+        return 'width: 150px'
+      }
+      return ''
+    }
+
+    const applyColumnFilters = () => {
+      const hasActiveFilters = Object.values(columnFilters.value).some(filter => filter && filter.trim() !== '')
+      
+      if (!hasActiveFilters && !filter.value) {
+        return () => true
+      }
+
+      return (user) => {
+        return Object.entries(columnFilters.value).every(([key, filterValue]) => {
+          // Skip non-filterable columns and empty filters
+          const column = columns.find(col => col.name === key)
+          if (!column?.filterable || !filterValue || filterValue.trim() === '') return true
+          
+          const lowercaseFilter = filterValue.toLowerCase()
+          let cellValue = user[key]
+          
+          if (key === 'last_call') {
+            cellValue = user.call_history?.[0]?.timestamp
+          }
+          
+          // Handle date fields
+          if (key === 'created_at' || key === 'last_call') {
+            if (cellValue) {
+              const formattedDate = formatDateWithTimezone(cellValue).toLowerCase()
+              return formattedDate.includes(lowercaseFilter)
+            }
+            return false
+          }
+          
+          // Handle regular fields
+          return String(cellValue || '').toLowerCase().includes(lowercaseFilter)
+        })
+      }
+    }
+
+    const filteredUsers = computed(() => {
+      const allUsers = props.users
+      const filterFn = applyColumnFilters()
+      const globalFilter = filter.value.toLowerCase()
+      
+      return allUsers.filter(user => {
+        return filterFn(user) && (
+          !globalFilter || 
+          user.name.toLowerCase().includes(globalFilter) ||
+          user.phone_number.toLowerCase().includes(globalFilter) ||
+          formatDateWithTimezone(user.created_at).toLowerCase().includes(globalFilter) ||
+          (user.call_history?.[0]?.timestamp && formatDateWithTimezone(user.call_history?.[0]?.timestamp).toLowerCase().includes(globalFilter))
+        )
+      })
+    })
 
     const onDeleteSelected = () => {
       emit('bulk-delete', selected.value)
@@ -302,15 +435,19 @@ export default defineComponent({
       selectedCallListUsers,
       showCallHistoryDialog,
       selectedUser,
+      filter,
+      columnFilters,
       callList: computed(() => callListStore.callList),
       calling: computed(() => callListStore.calling),
       callListStore,
+      filteredUsers,
       onDeleteSelected,
       addSelectedToCallList,
       removeFromCallList,
       removeSelectedFromCallList,
       callAllInList,
-      showCallHistory
+      showCallHistory,
+      getColumnStyle
     }
   }
 })
@@ -321,5 +458,10 @@ export default defineComponent({
   display: flex;
   justify-content: space-between;
   align-items: center;
+}
+
+.q-table th {
+  white-space: normal;
+  padding: 8px 16px;
 }
 </style>
