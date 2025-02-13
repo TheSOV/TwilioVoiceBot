@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { api } from 'src/boot/axios'
+import { useUsersStore } from 'src/stores/users'
 
 export const useCallListStore = defineStore('callList', () => {
   const callList = ref([])
@@ -8,6 +9,7 @@ export const useCallListStore = defineStore('callList', () => {
   const currentCallIndex = ref(0)
   const shouldCancelCalls = ref(false)
   const currentUser = ref(null)
+  const usersStore = useUsersStore()
 
   const uniqueCallList = computed(() => {
     const seen = new Set()
@@ -53,7 +55,17 @@ export const useCallListStore = defineStore('callList', () => {
         currentCallIndex.value = index
         currentUser.value = user
 
-        await api.post('/make_call', { phone_number: user.phone_number })
+        // Make the call
+        const callResponse = await api.post('/make_call', { 
+          phone_number: user.phone_number 
+        })
+
+        // Record the call result
+        await usersStore.recordCall(
+          user.phone_number,
+          callResponse.data
+        )
+
         await new Promise(resolve => setTimeout(resolve, 1000))
       }
     } catch (err) {
