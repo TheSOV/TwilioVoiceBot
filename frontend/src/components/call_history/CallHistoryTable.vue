@@ -201,7 +201,7 @@ export default defineComponent({
         label: 'Duration',
         align: 'left',
         field: 'call_duration',
-        format: val => formatDuration(val),
+        format: val => parseInt(val),
         sortable: true
       },
       {
@@ -326,10 +326,23 @@ export default defineComponent({
     }
 
     const formatDuration = (duration) => {
-      if (!duration) return '-'
-      const minutes = Math.floor(duration / 60)
-      const seconds = Math.floor(duration % 60)
-      return `${minutes}:${seconds.toString().padStart(2, '0')}`
+      // Check for null, undefined, NaN, or non-numeric values
+      if (duration == null || isNaN(duration) || typeof duration !== 'number') return '-'
+      
+      // Ensure duration is a positive number
+      const totalSeconds = Math.max(0, Math.round(duration))
+      
+      const hours = Math.floor(totalSeconds / 3600)
+      const minutes = Math.floor((totalSeconds % 3600) / 60)
+      const seconds = totalSeconds % 60
+      
+      if (hours > 0) {
+        return `${hours}h ${minutes}m ${seconds}s`
+      } else if (minutes > 0) {
+        return `${minutes}m ${seconds}s`
+      } else {
+        return `${seconds}s`
+      }
     }
 
     const formatFieldName = (key) => {
