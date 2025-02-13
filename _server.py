@@ -6,6 +6,7 @@ from fastapi import FastAPI, WebSocket, Query, Request, Body, HTTPException
 from fastapi.responses import JSONResponse, FileResponse
 from fastapi.websockets import WebSocketDisconnect
 from fastapi.staticfiles import StaticFiles
+from fastapi.middleware.cors import CORSMiddleware
 from twilio.rest import Client
 import websockets
 from dotenv import load_dotenv
@@ -18,6 +19,8 @@ import ngrok
 import traceback
 import time
 from pydantic import BaseModel
+from tinydb import TinyDB, Query
+from datetime import datetime
 
 from audio_processing import process_input_audio, process_output_audio, AudioRecorder
 from bot_initialization import initialize_session
@@ -90,6 +93,11 @@ client = Client(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
 # Shared state for calls
 
 calls = []
+
+# Initialize database
+db = TinyDB('db.json')
+users_table = db.table('users')
+calls_table = db.table('calls')
 
 @app.get("/")
 async def serve_spa(request: Request):
@@ -447,61 +455,55 @@ async def handle_media_stream(websocket: WebSocket):
         current_call['call_status'] = "disconnected"
 
 
+# User endpoints
+@app.post('/api/users')
+async def create_user(user_data: dict = Body(...)):
+    if not user_data.get('phone_number'):
+        raise HTTPException(status_code=400, detail="Phone number is required")
+    
+    user_data['created_at'] = datetime.now().isoformat()
+    users_table.insert(user_data)
+    return user_data
 
-async def check_number_allowed(to):
-    """Check if a number is allowed to be called."""
-    try:
-        # Uncomment these lines to test numbers. Only add numbers you have permission to call
-        OVERRIDE_NUMBERS = ['+34616642830'] 
-        if to in OVERRIDE_NUMBERS:             
-          return True
+@app.get('/api/users')
+async def get_users():
+    return users_table.all()
 
-        incoming_numbers = client.incoming_phone_numbers.list(phone_number=to)
-        if incoming_numbers:
-            return True
+@app.get('/api/users/{phone_number}')
+async def get_user(phone_number: str):
+    UserQuery = Query()
+    user = users_table.get(UserQuery.phone_number == phone_number)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    return user
 
-        outgoing_caller_ids = client.outgoing_caller_ids.list(phone_number=to)
-        if outgoing_caller_ids:
-            return True
+@app.put('/api/users/{phone_number}')
+async def update_user(phone_number: str, user_data: dict = Body(...)):
+    UserQuery = Query()
+    if not users_table.get(UserQuery.phone_number == phone_number):
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    user_data['updated_at'] = datetime.now().isoformat()
+    users_table.update(user_data, UserQuery.phone_number == phone_number)
+    return user_data
 
-        return False
-    except Exception as e:
-        traceback.print_exc()
-        print(f"Error checking phone number: {e}")
-        return False
+@app.delete('/api/users/{phone_number}')
+async def delete_user(phone_number: str):
+    UserQuery = Query()
+    if not users_table.get(UserQuery.phone_number == phone_number):
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    users_table.remove(UserQuery.phone_number == phone_number)
+    return {"message": "User deleted"}
 
-
-# async def make_call(phone_number_to_call: str):
-#     """Make an outbound call."""
-#     if not phone_number_to_call:
-#         raise ValueError("Please provide a phone number to call.")
-
-#     is_allowed = await check_number_allowed(phone_number_to_call)
-#     if not is_allowed:
-#         raise ValueError(f"The number {phone_number_to_call} is not recognized as a valid outgoing number or caller ID.")
-
-#     # Ensure compliance with applicable laws and regulations
-#     # All of the rules of TCPA apply even if a call is made by AI.
-#     # Do your own diligence for compliance.
-
-#     outbound_twiml = (
-#         f'<?xml version="1.0" encoding="UTF-8"?>'
-#         f'<Response><Connect><Stream url="wss://{DOMAIN}/media-stream" /></Connect></Response>'
-#     )
-
-#     call = client.calls.create(
-#         from_=PHONE_NUMBER_FROM,
-#         to=phone_number_to_call,
-#         twiml=outbound_twiml
-#     )
-
-#     await log_call_sid(call.sid)
-
-async def log_call_sid(call_sid):
-    """Log the call SID."""
-    print(f"Call started with SID: {call_sid}")
-
-
+# Add CORS middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # In production, replace with your frontend URL
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # static files
 app.mount("/", StaticFiles(directory="static", html=True), name="static")

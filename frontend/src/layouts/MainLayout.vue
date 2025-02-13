@@ -36,6 +36,20 @@
           :key="link.title"
           v-bind="link"
         />
+
+        <q-item
+          to="/users"
+          exact
+          clickable
+          v-ripple
+        >
+          <q-item-section avatar>
+            <q-icon name="people" />
+          </q-item-section>
+          <q-item-section>
+            Users
+          </q-item-section>
+        </q-item>
       </q-list>
     </q-drawer>
 
