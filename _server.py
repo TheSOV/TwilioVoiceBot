@@ -21,6 +21,7 @@ import time
 from pydantic import BaseModel
 from tinydb import TinyDB, Query
 from datetime import datetime
+from info_extraction import InfoExtractionAgent
 
 from audio_processing import process_input_audio, process_output_audio, AudioRecorder
 from bot_initialization import initialize_session
@@ -98,6 +99,9 @@ calls = []
 db = TinyDB('db.json')
 users_table = db.table('users')
 calls_table = db.table('calls')
+
+# Initialize info extraction agent
+info_agent = InfoExtractionAgent()
 
 @app.get("/")
 async def serve_spa(request: Request):
@@ -495,6 +499,49 @@ async def delete_user(phone_number: str):
     
     users_table.remove(UserQuery.phone_number == phone_number)
     return {"message": "User deleted"}
+
+@app.post('/api/users/{phone_number}/calls')
+async def record_call(phone_number: str, call_data: dict = Body(...)):
+    await asyncio.sleep(5) # to allow closing the sockets.
+
+    UserQuery = Query()
+    user = users_table.get(UserQuery.phone_number == phone_number)
+    
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    # Prepare call record
+    call_record = {
+        "timestamp": datetime.now().isoformat(),
+        **call_data
+    }
+    
+    # Only process transcription if audio file exists and call was completed
+    if call_data.get('audio_file_name') and call_data.get('call_status') == 'completed':
+        try:
+            # Perform transcription and info extraction
+            information, conversation = info_agent.extract_info(call_data['audio_file_name'])
+            
+            # Add extracted information to call record
+            call_record['extracted_info'] = information.model_dump()['parsed']
+            call_record['conversation'] = "\n".join([
+                f"{turn['speaker']}: {turn['text']}" for turn in conversation
+            ])
+        except Exception as e:
+            # Log the error but don't prevent saving the call record
+            call_record['extraction_error'] = str(e)
+    
+    # Update user with call history
+    if 'call_history' not in user:
+        user['call_history'] = []
+    
+    user['call_history'].append(call_record)
+    user['last_called_at'] = datetime.now().isoformat()
+    
+    # Update user in the database
+    users_table.update(user, UserQuery.phone_number == phone_number)
+    
+    return call_record
 
 # Add CORS middleware
 app.add_middleware(

@@ -156,9 +156,16 @@ export default {
     const confirmCall = async () => {
       calling.value = true
       try {
-        await api.post('/make_call', { 
+        // Make the call and get the result
+        const callResponse = await api.post('/make_call', { 
           phone_number: selectedUser.value.phone_number 
         })
+        
+        // Record the call result
+        await usersStore.recordCall(
+          selectedUser.value.phone_number, 
+          callResponse.data
+        )
         
         $q.notify({
           type: 'positive',

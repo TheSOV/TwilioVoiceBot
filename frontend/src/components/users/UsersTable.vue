@@ -75,6 +75,13 @@ export default defineComponent({
         field: 'comments'
       },
       {
+        name: 'last_called_at',
+        label: 'Last Called',
+        align: 'left',
+        field: 'last_called_at',
+        format: (val) => val ? new Date(val).toLocaleString() : 'Never'
+      },
+      {
         name: 'actions',
         label: 'Actions',
         align: 'center'
