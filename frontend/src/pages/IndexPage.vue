@@ -1,5 +1,5 @@
 <template>
-  <q-page padding>
+  <q-page padding class="full-width">
     <div class="row items-center justify-between q-mb-md">
       <h1 class="text-h4 q-my-none">Clients</h1>
       <q-btn
@@ -18,6 +18,7 @@
       @call="makeCall"
       @bulk-delete="confirmBulkDelete"
       ref="usersTableRef"
+      class="full-width"
     />
 
     <!-- Add/Edit Dialog -->
@@ -282,9 +283,15 @@ export default {
 
 <style scoped>
 .q-page {
-  max-width: 1200px;
-  margin: 0 auto;
+  width: 100%;
+  max-width: 100%;
 }
+
+.full-width {
+  width: 100%;
+  max-width: 100%;
+}
+
 .call-dialog {
   background-color: #fff;
 }

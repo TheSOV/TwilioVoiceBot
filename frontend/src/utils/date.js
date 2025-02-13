@@ -28,9 +28,7 @@ export const formatDateWithTimezone = (utcIsoString) => {
   if (!utcIsoString) return '-'
   
   try {
-    const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone
-    const formatted = formatToLocalTime(utcIsoString)
-    return `${formatted} (${timeZone})`
+    return formatToLocalTime(utcIsoString)
   } catch (error) {
     console.error('Error formatting date with timezone:', error)
     return '-'
