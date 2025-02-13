@@ -70,6 +70,13 @@
               :key="col.name" 
               :props="props"
               :style="getColumnStyle(col.name)"
+              :class="{
+                'text-left': col.align === 'left',
+                'text-center': col.align === 'center',
+                'text-right': col.align === 'right',
+                'col-auto': col.name === 'select' || col.name === 'actions',
+                'col': col.name !== 'select' && col.name !== 'actions'
+              }"
             >
               <template v-if="col.name === 'select'">
                 <q-checkbox v-model="props.selected" />
@@ -81,50 +88,73 @@
           </q-tr>
         </template>
 
-        <template v-slot:body-cell-actions="props">
-          <q-td :props="props" class="q-gutter-sm">
-            <q-btn
-              flat
-              round
-              dense
-              color="info"
-              icon="history"
-              @click="showCallHistory(props.row)"
-              :disable="!props.row.call_history?.length"
+        <template v-slot:body="props">
+          <q-tr :props="props">
+            <q-td 
+              v-for="col in props.cols" 
+              :key="col.name"
+              :props="props"
+              :class="{
+                'text-left': col.align === 'left',
+                'text-center': col.align === 'center',
+                'text-right': col.align === 'right',
+                'col-auto': col.name === 'select' || col.name === 'actions',
+                'col': col.name !== 'select' && col.name !== 'actions'
+              }"
             >
-              <q-tooltip>View Call History</q-tooltip>
-            </q-btn>
-            <q-btn
-              flat
-              round
-              dense
-              color="primary"
-              icon="phone"
-              @click="$emit('call', props.row)"
-            >
-              <q-tooltip>Call Client</q-tooltip>
-            </q-btn>
-            <q-btn
-              flat
-              round
-              dense
-              color="warning"
-              icon="edit"
-              @click="$emit('edit', props.row)"
-            >
-              <q-tooltip>Edit Client</q-tooltip>
-            </q-btn>
-            <q-btn
-              flat
-              round
-              dense
-              color="negative"
-              icon="delete"
-              @click="$emit('delete', props.row)"
-            >
-              <q-tooltip>Delete Client</q-tooltip>
-            </q-btn>
-          </q-td>
+              <template v-if="col.name === 'select'">
+                <q-checkbox v-model="props.selected" />
+              </template>
+              <template v-else-if="col.name === 'actions'">
+                <div class="q-gutter-sm">
+                  <q-btn
+                    flat
+                    round
+                    dense
+                    color="info"
+                    icon="history"
+                    @click="showCallHistory(props.row)"
+                    :disable="!props.row.call_history?.length"
+                  >
+                    <q-tooltip>View Call History</q-tooltip>
+                  </q-btn>
+                  <q-btn
+                    flat
+                    round
+                    dense
+                    color="primary"
+                    icon="phone"
+                    @click="$emit('call', props.row)"
+                  >
+                    <q-tooltip>Call Client</q-tooltip>
+                  </q-btn>
+                  <q-btn
+                    flat
+                    round
+                    dense
+                    color="warning"
+                    icon="edit"
+                    @click="$emit('edit', props.row)"
+                  >
+                    <q-tooltip>Edit Client</q-tooltip>
+                  </q-btn>
+                  <q-btn
+                    flat
+                    round
+                    dense
+                    color="negative"
+                    icon="delete"
+                    @click="$emit('delete', props.row)"
+                  >
+                    <q-tooltip>Delete Client</q-tooltip>
+                  </q-btn>
+                </div>
+              </template>
+              <template v-else>
+                {{ col.format ? col.format(props.row[col.field]) : props.row[col.field] }}
+              </template>
+            </q-td>
+          </q-tr>
         </template>
       </q-table>
     </div>
@@ -166,26 +196,73 @@
         selection="multiple"
         v-model:selected="selectedCallListUsers"
       >
-        <template v-slot:body-cell-actions="props">
-          <q-td :props="props">
-            <q-btn-group flat>
-              <q-btn
-                flat
-                round
-                color="negative"
-                icon="delete"
-                @click="removeFromCallList(props.row)"
-              />
-              <q-btn
-                flat
-                round
-                color="secondary"
-                icon="phone"
-                @click="$emit('call', props.row)"
-              />
-            </q-btn-group>
-          </q-td>
+        <template v-slot:header="props">
+          <q-tr :props="props">
+            <q-th 
+              v-for="col in props.cols" 
+              :key="col.name" 
+              :props="props"
+              :style="getColumnStyle(col.name)"
+              :class="{
+                'text-left': col.align === 'left',
+                'text-center': col.align === 'center',
+                'text-right': col.align === 'right',
+                'col-auto': col.name === 'select' || col.name === 'actions',
+                'col': col.name !== 'select' && col.name !== 'actions'
+              }"
+            >
+              <template v-if="col.name === 'select'">
+                <q-checkbox v-model="props.selected" />
+              </template>
+              <template v-else>
+                {{ col.label }}
+              </template>
+            </q-th>
+          </q-tr>
         </template>
+
+        <template v-slot:body="props">
+          <q-tr :props="props">
+            <q-td 
+              v-for="col in props.cols" 
+              :key="col.name"
+              :props="props"
+              :class="{
+                'text-left': col.align === 'left',
+                'text-center': col.align === 'center',
+                'text-right': col.align === 'right',
+                'col-auto': col.name === 'select' || col.name === 'actions',
+                'col': col.name !== 'select' && col.name !== 'actions'
+              }"
+            >
+              <template v-if="col.name === 'select'">
+                <q-checkbox v-model="props.selected" />
+              </template>
+              <template v-else-if="col.name === 'actions'">
+                <q-btn-group flat>
+                  <q-btn
+                    flat
+                    round
+                    color="negative"
+                    icon="delete"
+                    @click="removeFromCallList(props.row)"
+                  />
+                  <q-btn
+                    flat
+                    round
+                    color="secondary"
+                    icon="phone"
+                    @click="$emit('call', props.row)"
+                  />
+                </q-btn-group>
+              </template>
+              <template v-else>
+                {{ col.format ? col.format(props.row[col.field]) : props.row[col.field] }}
+              </template>
+            </q-td>
+          </q-tr>
+        </template>
+
         <template v-slot:no-data>
           <div class="full-width row flex-center text-grey q-gutter-sm q-pa-md">
             <q-icon size="2em" name="list" />
@@ -336,6 +413,9 @@ export default defineComponent({
     const getColumnStyle = (columnName) => {
       if (columnName === 'actions') {
         return 'width: 150px'
+      }
+      if (columnName === 'select') {
+        return 'width: 50px'
       }
       return ''
     }
