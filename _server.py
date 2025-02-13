@@ -2,9 +2,10 @@ import os
 import json
 import base64
 import asyncio
-from fastapi import FastAPI, WebSocket, Query
-from fastapi.responses import JSONResponse
+from fastapi import FastAPI, WebSocket, Query, Request, Body, HTTPException
+from fastapi.responses import JSONResponse, FileResponse
 from fastapi.websockets import WebSocketDisconnect
+from fastapi.staticfiles import StaticFiles
 from twilio.rest import Client
 import websockets
 from dotenv import load_dotenv
@@ -16,6 +17,7 @@ import copy
 import ngrok
 import traceback
 import time
+from pydantic import BaseModel
 
 from audio_processing import process_input_audio, process_output_audio, AudioRecorder
 from bot_initialization import initialize_session
@@ -89,13 +91,17 @@ client = Client(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
 
 calls = []
 
-@app.get('/', response_class=JSONResponse)
-async def index_page():
-    return {"message": "Twilio Media Stream Server is running!"}
+@app.get("/")
+async def serve_spa(request: Request):
+    return FileResponse("static/index.html")
+
 
 @app.post('/make_call')
-async def initiate_call(phone_number: str = Query(...)):
+async def initiate_call(phone_number: str = Body(..., embed=True)):
     global calls
+    
+    if not phone_number:
+        raise HTTPException(status_code=400, detail="Phone number is required")
     """
     Endpoint to make a call to a single phone number and wait for result.
     
@@ -154,6 +160,8 @@ async def initiate_call(phone_number: str = Query(...)):
             "error": str(e)
         }, status_code=500)
 
+
+# websocket handler
 @app.websocket('/media-stream')
 async def handle_media_stream(websocket: WebSocket):
     global calls
@@ -439,6 +447,7 @@ async def handle_media_stream(websocket: WebSocket):
         current_call['call_status'] = "disconnected"
 
 
+
 async def check_number_allowed(to):
     """Check if a number is allowed to be called."""
     try:
@@ -491,6 +500,11 @@ async def check_number_allowed(to):
 async def log_call_sid(call_sid):
     """Log the call SID."""
     print(f"Call started with SID: {call_sid}")
+
+
+
+# static files
+app.mount("/", StaticFiles(directory="static", html=True), name="static")
 
 
 if __name__ == "__main__":

@@ -95,7 +95,7 @@ if __name__ == "__main__":
 
     for number in validated_numbers:
         print(f"{Fore.CYAN}LLamando a: {number}{Style.RESET_ALL}")
-        response = requests.post(f"{BOT_URL}/make_call", params={"phone_number": number})
+        response = requests.post(f"{BOT_URL}/make_call", json={"phone_number": number})
 
         save_path = os.path.join(call_results_folder, f"{number}")
         os.makedirs(save_path, exist_ok=True)
