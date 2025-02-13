@@ -6,6 +6,8 @@
       :loading="loading"
       row-key="timestamp"
       class="full-width"
+      selection="multiple"
+      v-model:selected="selected"
     >
       <!-- Top row slot for global filter -->
       <template v-slot:top>
@@ -22,6 +24,15 @@
               <q-icon name="search" />
             </template>
           </q-input>
+          
+          <!-- Export Button -->
+          <q-btn
+            color="primary"
+            icon="download"
+            label="Export Selected"
+            :disable="!selected.length"
+            @click="exportToExcel"
+          />
         </div>
         <div class="row full-width q-gutter-sm q-mt-sm">
           <div v-for="col in columns.filter(c => c.name !== 'actions')" :key="col.name" class="col">
@@ -240,6 +251,45 @@ export default defineComponent({
       return result
     })
 
+    // Selection and export
+    const selected = ref([])
+
+    const exportToExcel = async () => {
+      try {
+        // Get the data to export
+        const dataToExport = selected.value.length ? selected.value : filteredCallHistories.value
+        
+        // Call the export API
+        const response = await fetch('/api/call_histories/export', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ calls: dataToExport }),
+        })
+        
+        if (!response.ok) {
+          throw new Error('Export failed')
+        }
+        
+        // Get the file blob
+        const blob = await response.blob()
+        
+        // Create download link
+        const url = window.URL.createObjectURL(blob)
+        const a = document.createElement('a')
+        a.href = url
+        a.download = `call_history_${new Date().toISOString().split('T')[0]}.xlsx`
+        document.body.appendChild(a)
+        a.click()
+        window.URL.revokeObjectURL(url)
+        document.body.removeChild(a)
+      } catch (error) {
+        console.error('Export failed:', error)
+        // You might want to show an error notification here
+      }
+    }
+
     // Dialogs and audio
     const showTranscriptionDialog = ref(false)
     const showAudioDialog = ref(false)
@@ -296,6 +346,10 @@ export default defineComponent({
       // Filtering
       filter,
       columnFilters,
+
+      // Selection and export
+      selected,
+      exportToExcel,
 
       // Dialogs and interactions
       showTranscriptionDialog,

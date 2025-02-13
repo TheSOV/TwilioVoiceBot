@@ -22,6 +22,10 @@ from pydantic import BaseModel
 from tinydb import TinyDB, Query
 from datetime import datetime, timezone
 from info_extraction import InfoExtractionAgent
+import pandas as pd
+import tempfile
+import os
+from fastapi.responses import FileResponse
 
 from audio_processing import process_input_audio, process_output_audio, AudioRecorder
 from bot_initialization import initialize_session
@@ -640,6 +644,58 @@ async def get_call_histories(
     filtered_call_histories.sort(key=lambda x: x['timestamp'], reverse=True)
     
     return filtered_call_histories
+
+@app.post('/api/call_histories/export')
+async def export_call_histories(request: dict):
+    calls = request.get('calls', [])
+
+    # Convert the calls data to a pandas DataFrame
+    df = pd.DataFrame(calls)
+    
+    # Format the timestamp column if it exists
+    if 'timestamp' in df.columns:
+        df['timestamp'] = pd.to_datetime(df['timestamp']).dt.strftime('%Y-%m-%d %H:%M:%S')
+    
+    # Format duration to MM:SS if it exists
+    if 'call_duration' in df.columns:
+        df['call_duration'] = df['call_duration'].apply(lambda x: 
+            '-' if pd.isnull(x) or x is None else f"{int(x // 60)}:{int(x % 60):02d}"
+        )
+    
+    # Format column names for better readability
+    df.columns = [col.replace('_', ' ').title() for col in df.columns]
+    
+    # Create a temporary file
+    temp_file = tempfile.NamedTemporaryFile(delete=False, suffix='.xlsx')
+    temp_path = temp_file.name
+    temp_file.close()
+    
+    try:
+        # Write DataFrame to Excel
+        df.to_excel(temp_path, index=False, engine='openpyxl')
+        
+        # Return the file as a response
+        response = FileResponse(
+            temp_path,
+            media_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            filename=f'call_history_{datetime.now().strftime("%Y%m%d")}.xlsx'
+        )
+        
+        # Custom background task for file deletion
+        async def cleanup():
+            try:
+                os.unlink(temp_path)
+            except Exception as e:
+                print(f"Error deleting temp file: {e}")
+        
+        response.background = cleanup
+        
+        return response
+    except Exception as e:
+        # If something goes wrong, ensure temp file is deleted
+        if os.path.exists(temp_path):
+            os.unlink(temp_path)
+        raise
 
 # Add CORS middleware
 app.add_middleware(
