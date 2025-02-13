@@ -47,6 +47,21 @@
             </q-td>
           </template>
 
+          <!-- Extracted Info column -->
+          <template v-slot:body-cell-extracted_info="props">
+            <q-td :props="props">
+              <div v-if="props.row.extracted_info" class="text-caption">
+                <template v-for="(value, key) in props.row.extracted_info" :key="key">
+                  <div class="extracted-info-item">
+                    <span class="text-weight-medium">{{ formatFieldName(key) }}:</span>
+                    <span>{{ value }}</span>
+                  </div>
+                </template>
+              </div>
+              <span v-else class="text-grey">No information extracted</span>
+            </q-td>
+          </template>
+
           <!-- Actions column -->
           <template v-slot:body-cell-actions="props">
             <q-td :props="props" class="q-gutter-sm">
@@ -75,19 +90,6 @@
               >
                 <q-tooltip>View Transcription</q-tooltip>
               </q-btn>
-
-              <!-- Extracted Info Dialog -->
-              <q-btn
-                flat
-                round
-                dense
-                color="positive"
-                icon="info"
-                @click="showExtractedInfo(props.row)"
-                :disable="!props.row.extracted_info"
-              >
-                <q-tooltip>View Extracted Information</q-tooltip>
-              </q-btn>
             </q-td>
           </template>
         </q-table>
@@ -107,28 +109,6 @@
           <div class="conversation-text" style="white-space: pre-line">
             {{ selectedCall?.conversation }}
           </div>
-        </q-card-section>
-      </q-card>
-    </q-dialog>
-
-    <!-- Extracted Info Dialog -->
-    <q-dialog v-model="showExtractedInfoDialog">
-      <q-card style="min-width: 350px">
-        <q-card-section class="row items-center q-pb-none">
-          <div class="text-h6">Extracted Information</div>
-          <q-space />
-          <q-btn icon="close" flat round dense v-close-popup />
-        </q-card-section>
-
-        <q-card-section class="q-pt-md">
-          <q-list>
-            <q-item v-for="(value, key) in selectedCall?.extracted_info" :key="key">
-              <q-item-section>
-                <q-item-label caption>{{ formatFieldName(key) }}</q-item-label>
-                <q-item-label>{{ value }}</q-item-label>
-              </q-item-section>
-            </q-item>
-          </q-list>
         </q-card-section>
       </q-card>
     </q-dialog>
@@ -190,7 +170,6 @@ export default defineComponent({
     })
 
     const showTranscriptionDialog = ref(false)
-    const showExtractedInfoDialog = ref(false)
     const showAudioDialog = ref(false)
     const selectedCall = ref(null)
     const currentAudioUrl = ref(null)
@@ -218,6 +197,13 @@ export default defineComponent({
         align: 'left',
         field: 'call_duration',
         sortable: true
+      },
+      {
+        name: 'extracted_info',
+        label: 'Extracted Information',
+        align: 'left',
+        field: 'extracted_info',
+        style: 'width: 300px'
       },
       {
         name: 'actions',
@@ -277,11 +263,6 @@ export default defineComponent({
       showTranscriptionDialog.value = true
     }
 
-    const showExtractedInfo = (call) => {
-      selectedCall.value = call
-      showExtractedInfoDialog.value = true
-    }
-
     const refreshUserData = async () => {
       if (props.user?.phone_number) {
         await usersStore.fetchUsers()
@@ -293,7 +274,6 @@ export default defineComponent({
       columns,
       sortedCallHistory,
       showTranscriptionDialog,
-      showExtractedInfoDialog,
       showAudioDialog,
       selectedCall,
       currentAudioUrl,
@@ -303,7 +283,6 @@ export default defineComponent({
       formatFieldName,
       playAudio,
       showTranscription,
-      showExtractedInfo,
       refreshUserData
     }
   }
@@ -314,5 +293,15 @@ export default defineComponent({
 .conversation-text {
   font-family: monospace;
   line-height: 1.5;
+}
+
+.extracted-info-item {
+  margin-bottom: 2px;
+  display: flex;
+  gap: 4px;
+}
+
+.extracted-info-item:last-child {
+  margin-bottom: 0;
 }
 </style>
