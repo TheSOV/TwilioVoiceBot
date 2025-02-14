@@ -7,7 +7,7 @@
         <q-btn
           color="secondary"
           icon="upload_file"
-          label="Import Users"
+          label="Import Clients"
           @click="showImportDialog = true"
         />
         
@@ -15,7 +15,7 @@
         <q-btn
           color="secondary"
           icon="download"
-          label="Export Users"
+          label="Export Clients"
           @click="showExportDialog = true"
         />
         
