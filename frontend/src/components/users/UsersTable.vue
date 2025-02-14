@@ -396,7 +396,7 @@ export default defineComponent({
         name: 'last_call',
         label: 'Last Call',
         align: 'left',
-        field: (user) => user.call_history?.[0]?.timestamp || null,
+        field: 'last_called_at',
         format: val => val ? formatDateWithTimezone(val) : 'Never',
         sortable: true,
         filterable: true
@@ -437,7 +437,7 @@ export default defineComponent({
           let cellValue = user[key]
           
           if (key === 'last_call') {
-            cellValue = user.call_history?.[0]?.timestamp
+            cellValue = user.last_called_at
           }
           
           // Handle date fields
@@ -466,7 +466,7 @@ export default defineComponent({
           user.name.toLowerCase().includes(globalFilter) ||
           user.phone_number.toLowerCase().includes(globalFilter) ||
           formatDateWithTimezone(user.created_at).toLowerCase().includes(globalFilter) ||
-          (user.call_history?.[0]?.timestamp && formatDateWithTimezone(user.call_history?.[0]?.timestamp).toLowerCase().includes(globalFilter))
+          (user.last_called_at && formatDateWithTimezone(user.last_called_at).toLowerCase().includes(globalFilter))
         )
       })
     })

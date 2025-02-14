@@ -2,8 +2,8 @@ import os
 import json
 import base64
 import asyncio
-from fastapi import FastAPI, HTTPException, WebSocket, Request, Body
-from fastapi.responses import JSONResponse, FileResponse
+from fastapi import FastAPI, HTTPException, WebSocket, Request, Body, File, UploadFile
+from fastapi.responses import JSONResponse, FileResponse, StreamingResponse
 from fastapi.websockets import WebSocketDisconnect
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
@@ -22,6 +22,7 @@ from pydantic import BaseModel
 from tinydb import TinyDB, Query
 from datetime import datetime, timezone
 from info_extraction import InfoExtractionAgent
+import io
 import pandas as pd
 import tempfile
 import os
@@ -775,6 +776,216 @@ async def export_call_histories(request: dict):
         if os.path.exists(temp_path):
             os.unlink(temp_path)
         raise
+
+@app.post('/api/users/import')
+async def import_users(file: UploadFile = File(...)):
+    """
+    Import users from Excel, CSV, or TXT file
+    
+    File formats:
+    - Excel/CSV: First column = phone number, second column (optional) = name
+    - TXT: Comma-separated phone numbers only
+    
+    Returns:
+        dict: Summary of import results
+    """
+    # Read the file content
+    content = await file.read()
+    filename = file.filename.lower()
+    
+    # Validate file type
+    if not filename.endswith(('.xlsx', '.xls', '.csv', '.txt')):
+        raise HTTPException(status_code=400, detail="Invalid file type. Supported: .xlsx, .xls, .csv, .txt")
+    
+    try:
+        # Process different file types
+        imported_users = []
+        failed_users = []
+        
+        if filename.endswith(('.xlsx', '.xls', '.csv')):
+            # Read Excel or CSV with string dtype, skipping header
+            try:
+                if filename.endswith('.csv'):
+                    df = pd.read_csv(io.BytesIO(content), header=0, dtype=str)
+                else:
+                    df = pd.read_excel(io.BytesIO(content), header=0, dtype=str)
+            except Exception as e:
+                raise HTTPException(status_code=400, detail=f"Error reading file: {str(e)}")
+            
+            for index, row in df.iterrows():
+                try:
+                    # Read phone number as string
+                    phone_number = str(row.iloc[0]).strip()
+                    
+                    # Validate phone number
+                    try:
+                        validated_number = validate_phone_number(phone_number)
+                    except Exception as validation_error:
+                        failed_users.append({
+                            'row': index + 2,  # +2 to account for 0-indexing and header
+                            'input': phone_number,
+                            'error': str(validation_error)
+                        })
+                        continue
+                    
+                    # Prepare user data
+                    user_data = {
+                        'phone_number': validated_number,
+                        # Handle name: use empty string if NaN or no second column
+                        'name': str(row.iloc[1]).strip() if len(row) > 1 and pd.notna(row.iloc[1]) else '',
+                        'comments': '',
+                        'created_at': get_utc_timestamp(),
+                        'updated_at': get_utc_timestamp()
+                    }
+                    
+                    # Check if user already exists
+                    User = Query()
+                    existing_user = users_table.search(User.phone_number == validated_number)
+                    
+                    if existing_user:
+                        # Update existing user
+                        users_table.update(user_data, User.phone_number == validated_number)
+                    else:
+                        # Create new user
+                        users_table.insert(user_data)
+                    
+                    imported_users.append(validated_number)
+                except Exception as e:
+                    failed_users.append({
+                        'row': index + 2,
+                        'input': str(row.iloc[0]),
+                        'error': str(e)
+                    })
+        
+        elif filename.endswith('.txt'):
+            # Read TXT (comma-separated phone numbers)
+            try:
+                phone_numbers = content.decode('utf-8').replace('\n', '').split(',')
+            except Exception as e:
+                raise HTTPException(status_code=400, detail=f"Error reading TXT file: {str(e)}")
+            
+            for index, phone_number in enumerate(phone_numbers):
+                try:
+                    # Normalize phone number
+                    phone_number = phone_number.strip()
+                    
+                    # Skip empty entries
+                    if not phone_number:
+                        continue
+                    
+                    # Validate phone number
+                    try:
+                        validated_number = validate_phone_number(phone_number)
+                    except Exception as validation_error:
+                        failed_users.append({
+                            'row': index + 1,
+                            'input': phone_number,
+                            'error': str(validation_error)
+                        })
+                        continue
+                    
+                    # Prepare user data
+                    user_data = {
+                        'phone_number': validated_number,
+                        'name': '',
+                        'comments': '',
+                        'created_at': get_utc_timestamp(),
+                        'updated_at': get_utc_timestamp()
+                    }
+                    
+                    # Check if user already exists
+                    User = Query()
+                    existing_user = users_table.search(User.phone_number == validated_number)
+                    
+                    if existing_user:
+                        # Update existing user
+                        users_table.update(user_data, User.phone_number == validated_number)
+                    else:
+                        # Create new user
+                        users_table.insert(user_data)
+                    
+                    imported_users.append(validated_number)
+                except Exception as e:
+                    failed_users.append({
+                        'row': index + 1,
+                        'input': phone_number,
+                        'error': str(e)
+                    })
+        
+        return {
+            "message": "Users imported successfully",
+            "imported_count": len(imported_users),
+            "failed_count": len(failed_users),
+            "imported_users": imported_users,
+            "failed_users": failed_users
+        }
+    
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Error processing file: {str(e)}")
+
+@app.post('/api/users/export')
+async def export_users(format: str = 'xlsx'):
+    """
+    Export users to specified format
+    
+    Supported formats:
+    - xlsx: Excel file with phone number and name
+    - csv: CSV file with phone number and name
+    - txt: Comma-separated phone numbers
+    
+    Returns:
+        StreamingResponse with exported file
+    """
+    # Validate format
+    supported_formats = ['xlsx', 'csv', 'txt']
+    if format not in supported_formats:
+        raise HTTPException(status_code=400, detail=f"Invalid format. Supported: {', '.join(supported_formats)}")
+    
+    # Get all users
+    all_users = users_table.all()
+    
+    # Prepare data based on format
+    if format in ['xlsx', 'csv']:
+        # Prepare DataFrame
+        df = pd.DataFrame([
+            {
+                'Phone Number': user['phone_number'], 
+                'Name': user.get('name', '')
+            } for user in all_users
+        ])
+        
+        # Create in-memory buffer
+        buffer = io.BytesIO()
+        
+        if format == 'xlsx':
+            df.to_excel(buffer, index=False, engine='openpyxl')
+            content_type = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+            filename = 'users_export.xlsx'
+        else:
+            df.to_csv(buffer, index=False)
+            content_type = 'text/csv'
+            filename = 'users_export.csv'
+        
+        buffer.seek(0)
+        
+        return StreamingResponse(
+            buffer, 
+            media_type=content_type, 
+            headers={'Content-Disposition': f'attachment; filename="{filename}"'}
+        )
+    
+    elif format == 'txt':
+        # Create comma-separated phone numbers
+        phone_numbers = ','.join(user['phone_number'] for user in all_users)
+        
+        buffer = io.BytesIO(phone_numbers.encode('utf-8'))
+        buffer.seek(0)
+        
+        return StreamingResponse(
+            buffer, 
+            media_type='text/plain', 
+            headers={'Content-Disposition': 'attachment; filename="users_export.txt"'}
+        )
 
 # Add CORS middleware
 app.add_middleware(

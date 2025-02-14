@@ -2,13 +2,120 @@
   <q-page padding class="full-width">
     <div class="row items-center justify-between q-mb-md">
       <h1 class="text-h4 q-my-none">Clients</h1>
-      <q-btn
-        color="primary"
-        icon="add"
-        label="Add Client"
-        @click="showAddDialog = true"
-      />
+      <div class="row q-gutter-sm">
+        <!-- Import Users Button -->
+        <q-btn
+          color="secondary"
+          icon="upload_file"
+          label="Import Users"
+          @click="showImportDialog = true"
+        />
+        
+        <!-- Export Users Button -->
+        <q-btn
+          color="secondary"
+          icon="download"
+          label="Export Users"
+          @click="showExportDialog = true"
+        />
+        
+        <!-- Add Client Button -->
+        <q-btn
+          color="primary"
+          icon="add"
+          label="Add Client"
+          @click="showAddDialog = true"
+        />
+      </div>
     </div>
+
+    <!-- Import Users Dialog -->
+    <q-dialog v-model="showImportDialog">
+      <q-card style="min-width: 500px">
+        <q-card-section>
+          <div class="text-h6">Import Users</div>
+          <div class="text-caption q-mt-sm">
+            Supported formats:
+            <ul>
+              <li>Excel/CSV: First column = phone number, second column (optional) = name</li>
+              <li>TXT: Comma-separated phone numbers</li>
+            </ul>
+          </div>
+        </q-card-section>
+
+        <q-card-section>
+          <q-file 
+            v-model="importFile" 
+            label="Select File" 
+            accept=".xlsx,.xls,.csv,.txt"
+            outlined
+          />
+        </q-card-section>
+
+        <q-card-actions align="right">
+          <q-btn flat label="Cancel" color="primary" v-close-popup />
+          <q-btn 
+            label="Import" 
+            color="primary" 
+            @click="importUsers"
+            :disable="!importFile"
+          />
+        </q-card-actions>
+
+        <!-- Failed Users Details -->
+        <q-card-section v-if="importFailedUsers && importFailedUsers.length > 0">
+          <q-expansion-item
+            expand-separator
+            label="Failed Imports"
+            :caption="`${importFailedUsers.length} entries could not be imported`"
+          >
+            <q-list>
+              <q-item 
+                v-for="(failedUser, index) in importFailedUsers" 
+                :key="index"
+                clickable
+              >
+                <q-item-section>
+                  <q-item-label>
+                    Row {{ failedUser.row }}: {{ failedUser.input }}
+                  </q-item-label>
+                  <q-item-label caption>
+                    Error: {{ failedUser.error }}
+                  </q-item-label>
+                </q-item-section>
+              </q-item>
+            </q-list>
+          </q-expansion-item>
+        </q-card-section>
+      </q-card>
+    </q-dialog>
+
+    <!-- Export Users Dialog -->
+    <q-dialog v-model="showExportDialog">
+      <q-card style="min-width: 350px">
+        <q-card-section>
+          <div class="text-h6">Export Users</div>
+        </q-card-section>
+
+        <q-card-section>
+          <q-select 
+            v-model="exportFormat" 
+            :options="['xlsx', 'csv', 'txt']"
+            label="Export Format"
+            outlined
+          />
+        </q-card-section>
+
+        <q-card-actions align="right">
+          <q-btn flat label="Cancel" color="primary" v-close-popup />
+          <q-btn 
+            label="Export" 
+            color="primary" 
+            @click="exportUsers"
+          />
+        </q-card-actions>
+      </q-card>
+    </q-dialog>
 
     <users-table
       :users="users"
@@ -116,11 +223,16 @@ export default {
     const showAddDialog = ref(false)
     const showDeleteDialog = ref(false)
     const showCallDialog = ref(false)
+    const showImportDialog = ref(false)
+    const showExportDialog = ref(false)
     const selectedUser = ref(null)
     const bulkDeleteUsers = ref(null)
     const editMode = ref(false)
     const calling = ref(false)
     const usersTableRef = ref(null)
+    const importFile = ref(null)
+    const exportFormat = ref('xlsx')
+    const importFailedUsers = ref([])
 
     const closeDialog = () => {
       showAddDialog.value = false
@@ -252,6 +364,82 @@ export default {
       }
     }
 
+    const importUsers = async () => {
+      if (!importFile.value) {
+        $q.notify({
+          type: 'negative',
+          message: 'Please select a file to import'
+        })
+        return
+      }
+
+      const formData = new FormData()
+      formData.append('file', importFile.value)
+
+      try {
+        const response = await api.post('/api/users/import', formData, {
+          headers: {
+            'Content-Type': 'multipart/form-data'
+          }
+        })
+
+        // Refresh users list
+        await usersStore.fetchUsers()
+
+        // Store failed users for display
+        importFailedUsers.value = response.data.failed_users || []
+
+        $q.notify({
+          type: 'positive',
+          message: `Imported ${response.data.imported_count} users`,
+          caption: response.data.failed_count > 0 
+            ? `${response.data.failed_count} users failed to import` 
+            : ''
+        })
+
+        // If there are failed imports, keep the dialog open
+        if (response.data.failed_count > 0) {
+          return
+        }
+
+        // Clear file selector and close dialog
+        importFile.value = null
+        showImportDialog.value = false
+      } catch (error) {
+        $q.notify({
+          type: 'negative',
+          message: 'Failed to import users',
+          caption: error.response?.data?.detail || error.message
+        })
+      }
+    }
+
+    const exportUsers = async () => {
+      try {
+        const response = await api.post('/api/users/export', null, {
+          params: { format: exportFormat.value },
+          responseType: 'blob'
+        })
+
+        // Create a link and trigger download
+        const url = window.URL.createObjectURL(new Blob([response.data]))
+        const link = document.createElement('a')
+        link.href = url
+        link.setAttribute('download', `users_export.${exportFormat.value}`)
+        document.body.appendChild(link)
+        link.click()
+        link.remove()
+
+        showExportDialog.value = false
+      } catch (error) {
+        $q.notify({
+          type: 'negative',
+          message: 'Failed to export users',
+          caption: error.response?.data?.detail || error.message
+        })
+      }
+    }
+
     onMounted(() => {
       usersStore.fetchUsers()
     })
@@ -262,6 +450,8 @@ export default {
       showAddDialog,
       showDeleteDialog,
       showCallDialog,
+      showImportDialog,
+      showExportDialog,
       selectedUser,
       bulkDeleteUsers,
       editMode,
@@ -275,7 +465,12 @@ export default {
       makeCall,
       confirmCall,
       onSubmit,
-      usersTableRef
+      usersTableRef,
+      importFile,
+      exportFormat,
+      importFailedUsers,
+      importUsers,
+      exportUsers
     }
   }
 }
