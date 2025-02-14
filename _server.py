@@ -26,6 +26,7 @@ import pandas as pd
 import tempfile
 import os
 from fastapi.responses import FileResponse
+import phonenumbers
 
 from audio_processing import process_input_audio, process_output_audio, AudioRecorder
 from bot_initialization import initialize_session
@@ -481,18 +482,72 @@ async def create_user(user_data: dict = Body(...)):
     if not user_data.get('phone_number'):
         raise HTTPException(status_code=400, detail="Phone number is required")
     
+    # Validate and format phone number
+    validated_phone_number = validate_phone_number(user_data['phone_number'])
+    user_data['phone_number'] = validated_phone_number
+    
     # Add creation timestamp and initialize call history
     user_data['created_at'] = get_utc_timestamp()
     user_data['call_history'] = []
     
     # Check if phone number already exists
     User = Query()
-    existing_user = users_table.get(User.phone_number == user_data['phone_number'])
+    existing_user = users_table.get(User.phone_number == validated_phone_number)
     if existing_user:
         raise HTTPException(status_code=400, detail="Phone number already exists")
     
     users_table.insert(user_data)
     return user_data
+
+def validate_phone_number(phone_number: str, default_country: str = "ES") -> str:
+    """
+    Validate and format phone number with specific rules:
+    - Handles various input formats (with/without +, with/without country code)
+    - If no country code, assume default country (Spain)
+    - Verify number is valid
+    - Return formatted E.164 number
+    
+    Args:
+        phone_number (str): Phone number to validate
+        default_country (str, optional): Default country code if not specified. Defaults to "ES".
+    
+    Raises:
+        HTTPException: If phone number is invalid
+    
+    Returns:
+        str: Validated and formatted phone number in E.164 format
+    """
+    # Normalize the phone number: remove spaces, dashes, parentheses
+    phone_number = str(phone_number).replace(' ', '').replace('-', '').replace('(', '').replace(')', '')
+    
+    try:
+        # Handle numbers starting with 0 or without +
+        if phone_number.startswith('00'):
+            # Convert international prefix 00 to +
+            phone_number = f'+{phone_number[2:]}'
+        elif phone_number.startswith('0'):
+            # For Spanish numbers starting with 0, replace with +34
+            if default_country == 'ES':
+                phone_number = f'+34{phone_number[1:]}'
+        elif not phone_number.startswith('+'):
+            # If no + and not starting with 0, assume default country
+            if default_country == 'ES':
+                phone_number = f'+34{phone_number}'
+        
+        # Parse the number, using the default country as a fallback
+        parsed_number = phonenumbers.parse(phone_number, default_country)
+        
+        # Validate the number
+        if not phonenumbers.is_valid_number(parsed_number):
+            raise ValueError(f"Invalid phone number: {phone_number}")
+        
+        # Format to E.164
+        formatted_number = phonenumbers.format_number(parsed_number, phonenumbers.PhoneNumberFormat.E164)
+        
+        return formatted_number
+    
+    except (phonenumbers.NumberParseException, ValueError) as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 @app.get('/api/users')
 async def get_users():
@@ -521,12 +576,36 @@ async def update_user(phone_number: str, user_data: dict = Body(...)):
 
 @app.delete('/api/users/{phone_number}')
 async def delete_user(phone_number: str):
-    UserQuery = Query()
-    if not users_table.get(UserQuery.phone_number == phone_number):
+    """
+    Delete a user and their associated audio files
+    
+    Args:
+        phone_number (str): Phone number of the user to delete
+    
+    Returns:
+        dict: Confirmation of deletion
+    """
+    # Find the user first
+    User = Query()
+    user_record = users_table.search(User.phone_number == phone_number)
+    
+    if not user_record:
         raise HTTPException(status_code=404, detail="User not found")
     
-    users_table.remove(UserQuery.phone_number == phone_number)
-    return {"message": "User deleted"}
+    # Delete associated wav files from call history
+    for call in user_record[0].get('call_history', []):
+        audio_file_name = call.get('audio_file_name')
+        if audio_file_name and os.path.exists(audio_file_name):
+            try:
+                os.remove(audio_file_name)
+                print(f"Deleted audio file: {audio_file_name}")
+            except Exception as e:
+                print(f"Error deleting audio file {audio_file_name}: {e}")
+    
+    # Delete the user from the database
+    users_table.remove(User.phone_number == phone_number)
+    
+    return {"message": "User and associated audio files deleted successfully"}
 
 @app.post('/api/users/{phone_number}/calls')
 async def record_call(phone_number: str, call_data: dict = Body(...)):

@@ -36,6 +36,16 @@ export const useUsersStore = defineStore('users', {
         return response.data
       } catch (error) {
         console.error('Failed to create user:', error)
+        // Transform the error to include the server's error message
+        if (error.response?.data?.detail) {
+          throw new Error(error.response.data.detail)
+        } else if (error.response?.data) {
+          throw new Error(
+            typeof error.response.data === 'string' 
+              ? error.response.data 
+              : JSON.stringify(error.response.data)
+          )
+        }
         throw error
       }
     },
