@@ -8,7 +8,7 @@ import time
 
 class AudioRecorder:
     """
-    Stereo audio recorder to write input and output audio with preserved timing
+    Stereo audio recorder to write input and output audio with preserved timing. This section of code requires improvement, cause it is recording intercalated sequences of both audios, causing the recorded IA voice to be distorted. and making the recording longer with silences spaces, that should not be present.
     """
     def __init__(self, file_dir='recordings/combined', frame_rate=4000):
         self.wav_file = None
