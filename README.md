@@ -66,22 +66,24 @@ A voice-based AI bot using Twilio for communication, with a Vue.js frontend and 
 1. Install Python dependencies: `pip install -r requirements.txt`
 2. Install frontend dependencies: `cd frontend && npm install` (for development only)
 3. Configure environment variables in `.env`:
-   - OpenAI Configuration:
-     - `OPENAI_API_KEY`: Your OpenAI API key
-     - `OPENAI_REALTIME_MODEL`: Realtime model (default: gpt-4o-mini-realtime-preview)
-     - `OPENAI_AUDIO_VOICE`: TTS voice model (default: coral)
-     - `OPENAI_STT_MODEL`: Speech-to-text model (default: whisper-1)
-     - `OPENAI_TEXT_MODEL`: Text generation model (default: gpt-4o-mini)
-   - Twilio Configuration:
+   - OpenAI Configuration ([Create account](https://platform.openai.com)):
+     - `OPENAI_API_KEY`: Your OpenAI API key ([Get key](https://platform.openai.com/account/api-keys))
+     - `OPENAI_REALTIME_MODEL`: Realtime model ([Docs](https://platform.openai.com/docs/guides/realtime)) (default: gpt-4o-mini-realtime-preview)
+     - `OPENAI_AUDIO_VOICE`: TTS voice model ([Docs](https://platform.openai.com/docs/guides/text-to-speech)) (default: coral)
+     - `OPENAI_STT_MODEL`: Speech-to-text model ([Docs](https://platform.openai.com/docs/guides/speech-to-text)) (default: whisper-1)
+     - `OPENAI_TEXT_MODEL`: Text generation model ([Docs](https://platform.openai.com/docs/guides/text-generation)) (default: gpt-4o-mini)
+   - Twilio Configuration ([Create account](https://www.twilio.com)):
      - `TWILIO_ACCOUNT_SID`: Your Twilio Account SID
      - `TWILIO_AUTH_TOKEN`: Your Twilio Auth Token
      - `PHONE_NUMBER_FROM`: Your Twilio phone number
+     - When using Twilio in Trial version, it is required to add a phone number as the verified number receive calls from Twilio, and also it is required asset it risk level. It is easier to run the code, and follow the instructions given in the console when Twilio API raises the exceptions. Otherwise, consult the Twilio documentation, ([Verify phone number](https://help.twilio.com/articles/223180048-How-to-Add-and-Remove-a-Verified-Phone-Number-or-Caller-ID-with-Twilio)).
    - Hugging Face Configuration:
-     - `HUGGINGFACE_TOKEN`: Token for Pyannote Speaker Diarization
+     - `HUGGINGFACE_TOKEN`: Token for Pyannote Speaker Diarization ([Get token](https://huggingface.co/docs/hub/security-tokens))
+     - Note: This is a Gated Model requiring organization name and email ([Model page](https://huggingface.co/pyannote/segmentation-3.0))
    - Additional Settings:
      - `MODEL_LANGUAGE`: Language setting (default: es)
      - `CALL_DURATION_LIMIT`: Call duration limit in seconds
-     - `NGROK_TOKEN`: Ngrok authentication token
+     - `NGROK_TOKEN`: Ngrok authentication token ([Create account](https://ngrok.com/))
      - `PORT`: Server port (default: 6060)
 
 ## Development
@@ -156,8 +158,8 @@ A voice-based AI bot using Twilio for communication, with a Vue.js frontend and 
     - Audio format: g711 µ-law
     - Turn detection
     - Real-time transcription and response
-  -This function, along with make_call, are the main functions of the backend. The rest are support functions to control call flows.
-  -Take in count that this functions contains two inner async loops, that takes care of the communication between Twilio and OpenAI, so any improvement made on it must NOT include sleeps or blocking operations, otherwise, it may affect the quality of the call.
+  - This function, along with make_call, are the main functions of the backend. The rest are support functions to control call flows.
+  - Take in count that this functions contains two inner async loops, that takes care of the communication between Twilio and OpenAI, so any improvement made on it must NOT include sleeps or blocking operations, otherwise, it may affect the quality of the call.
 
 ### Static Files
 - `GET /`
