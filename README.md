@@ -1,7 +1,7 @@
 # TwilioVoiceBot
 
 ## Project Overview
-A voice-based AI bot using Twilio for communication, with a Vue.js frontend and Python backend.
+A voice-based AI bot using Twilio for communication, with a Vue.js frontend and Python backend. Based on https://www.twilio.com/en-us/blog/outbound-calls-python-openai-realtime-api-voice
 
 ## Project Structure
 
