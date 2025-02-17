@@ -2,3 +2,5 @@
 *.xls
 *.csv
 *.wav
+*.mp3
+*.env
