@@ -77,9 +77,9 @@ A voice-based AI bot using Twilio for communication, with a Vue.js frontend and 
      - `TWILIO_AUTH_TOKEN`: Your Twilio Auth Token
      - `PHONE_NUMBER_FROM`: Your Twilio phone number
      - When using Twilio in Trial version, it is required to add a phone number as the verified number receive calls from Twilio, and also it is required asset it risk level. It is easier to run the code, and follow the instructions given in the console when Twilio API raises the exceptions. Otherwise, consult the Twilio documentation, ([Verify phone number](https://help.twilio.com/articles/223180048-How-to-Add-and-Remove-a-Verified-Phone-Number-or-Caller-ID-with-Twilio)).
-   - Hugging Face Configuration:
+   - Hugging Face Configuration([Create account](https://huggingface.co/)):
      - `HUGGINGFACE_TOKEN`: Token for Pyannote Speaker Diarization ([Get token](https://huggingface.co/docs/hub/security-tokens))
-     - Note: This is a Gated Model requiring organization name and email ([Model page](https://huggingface.co/pyannote/segmentation-3.0))
+     - Pyannote Segmentation is a Gated Model requiring organization name and email ([Model page](https://huggingface.co/pyannote/segmentation-3.0))
    - Additional Settings:
      - `MODEL_LANGUAGE`: Language setting (default: es)
      - `CALL_DURATION_LIMIT`: Call duration limit in seconds
