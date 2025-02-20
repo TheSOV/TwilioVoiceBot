@@ -1009,4 +1009,4 @@ if __name__ == "__main__":
     #ngrok http 6060
     #python _base_twilio_vad.py --call=+34616642830
     #powershell Invoke-RestMethod -Method Post -Uri "http://localhost:6060/make_call?phone_number=+1234567890"
-    #cmd curl -X "POST" "http://localhost:6060/make_call?phone_number=%2B34616642830"
+    #cmd curl -X "POST" "http://localhost:6060/make_call?phone_number=%2B1234567890"
