@@ -40,7 +40,7 @@ class InfoExtractionAgent:
             model=OPENAI_STT_MODEL, 
             file=audio_file,
             language="es",
-            prompt="MiCityHome",
+            # prompt="",
             response_format="verbose_json",
             timestamp_granularities=["word"]
         )
