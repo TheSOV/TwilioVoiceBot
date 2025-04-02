@@ -29,7 +29,7 @@ A voice-based AI bot using Twilio for communication, with a Vue.js frontend and 
     - Voice selection (configurable via .env)
     - Multi-modal support: text and audio
     - Temperature: 0.6 for balanced response creativity (minimum is 0.6)
-    - Dynamic tool integration (currently the only implemented tool is the end_call, used by the model to end the conversation. A data extraction tool is also implemented, used by the model to extract information from the conversation, however, the current tesyed model is a bit dumb, and often does not understand what the user said, so and independent data extraction moelule with a combination of transcription and structured data estraction was implemented, and it is applied over the recoreded audio file).
+    - Dynamic tool integration (currently the only implemented tool is the end_call, used by the model to end the conversation. A data extraction tool is also implemented, used by the model to extract information from the conversation, however, the current tested model is a bit dumb, and often does not understand what the user said, so and independent data extraction moelule with a combination of transcription and structured data estraction was implemented, and it is applied over the recoreded audio file).
   - Initial conversation script loading and execution
   - Modular tool configuration system
 - `info_extraction.py`: Temporal information extraction system:
@@ -38,7 +38,7 @@ A voice-based AI bot using Twilio for communication, with a Vue.js frontend and 
   - Structured data extraction using Pydantic models (modifyng the pydantic models, allows to modify which information is extracted from the audio file. pydantic models for data extraaction is the class ClientInfoExtraction, at the begining of the file).
   - If any acronym or specific name or word, that is uncommon, will be normally used, add it as prompt to the whisper model. Whisper model only supports up to 224 tokens as prompt input. More info about Whisper: https://platform.openai.com/docs/guides/speech-to-text
 - `requirements.txt`: Python dependencies
-- `db.json`: Local database/storage (Currently using TinyDB. This is a simple JSON file, but it could be replaced with a more robust database like MongoDB or PostgreSQL if needed. Take in count that TinyDB be default no not support concurrent writing, so it could be useful to switch to a more robust database in the future. Calling features are independent from the database.)
+- `db.json`: Local database/storage (Currently using TinyDB. This is a simple JSON file, but it could be replaced with a more robust database like MongoDB or PostgreSQL if needed. Take in count that TinyDB be default has no support concurrent writing, so it could be useful to switch to a more robust database in the future. Calling features are independent from the database.)
 
 ### Directories
 - `AI/`: AI-related components
