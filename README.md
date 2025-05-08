@@ -2,7 +2,7 @@
 [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/TheSOV/TwilioVoiceBot)
 
 ## Project Overview
-A voice-based AI bot using Twilio for communication, with a Vue.js frontend and Python backend. Based on https://www.twilio.com/en-us/blog/outbound-calls-python-openai-realtime-api-voice
+A voice-based AI bot using Twilio for communication, with a Vue.js frontend and Python backend. Based on https://www.twilio.com/en-us/blog/outbound-calls-python-openai-realtime-api-voice. More details at [DeepWiki](https://deepwiki.com/TheSOV/TwilioVoiceBot)
 
 ## Project Structure
 
